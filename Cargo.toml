@@ -1,0 +1,46 @@
+[workspace]
+members = ["crates/trelloc-core", "crates/trelloc-mcp", "crates/trelloc"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0" # x-release-please-version
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/mulhamna/trello-commands"
+homepage = "https://github.com/mulhamna/trello-commands"
+
+[workspace.dependencies]
+trelloc-core = { path = "crates/trelloc-core", version = "0.1.0" } # x-release-please-version
+trelloc-mcp = { path = "crates/trelloc-mcp", version = "0.1.0" } # x-release-please-version
+
+anyhow = "1"
+axum = "0.8"
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
+chrono-tz = "0.10"
+clap = { version = "4", features = ["derive", "env"] }
+comfy-table = "7"
+dirs = "6"
+futures = "0.3"
+indicatif = "0.18"
+inquire = "0.9"
+kurir = "=0.4.0"
+mime_guess = "2"
+open = "5"
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls", "rustls-tls-native-roots"] }
+rmcp = { version = "2.1.0", features = ["macros", "schemars", "server", "transport-io", "transport-streamable-http-server"] }
+schemars = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+strsim = "0.11"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+url = "2"
+
+# dev
+serial_test = "4"
+tempfile = "3"
+wiremock = "0.6"
