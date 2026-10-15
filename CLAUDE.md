@@ -173,7 +173,28 @@ Format: `<type>(<scope>): <description>` — in English. Scopes: `core`, `cli`, 
 | `feat!:` / `BREAKING CHANGE:`     | MAJOR |
 | `chore:`, `docs:`, `ci:`, `test:` | none  |
 
-Release automation is ROADMAP Phase 6: a single-lane setup (release-please → `release.yml` → crates.io + npm via OIDC trusted publishing, Homebrew tap, Scoop bucket). Add the "Release flow" section to this file at that point.
+### Release flow (single lane)
+
+```
+feature PRs (conventional commits) ─► main
+        │
+        ▼  maintainer runs "release-please" (workflow_dispatch)
+release PR: VERSION, Cargo.toml (x-release-please-version), packaging/npm/package.json,
+            CHANGELOG.md, Cargo.lock (re-synced by the workflow)
+        │
+        ▼  merge release PR → release-please tags vX.Y.Z + creates the GitHub Release
+release.yml (tag push):
+  validate-tag ─► build ×6 (+ provenance) ─► github-release (archives + checksums.txt)
+                                               ├─► publish-crates  (OIDC: core → mcp → trelloc)
+                                               ├─► publish-npm     (OIDC, @mulham28/trelloc)
+                                               └─► update-packages (brew tap, scoop bucket)
+```
+
+- Never bump versions, edit `CHANGELOG.md`, or push tags by hand; release-please owns all of it.
+- crates.io and npm publish with **OIDC trusted publishing** from the `release` environment. There are no publish tokens in secrets. Repo secrets are PATs only: `RELEASE_PLEASE_TOKEN` (the tag push must trigger workflows) and `PACKAGES_TOKEN` (push to the Homebrew tap and Scoop bucket).
+- Before the first release the owner sets up trusted publishing for `trelloc-core`, `trelloc-mcp`, `trelloc` and `@mulham28/trelloc`, plus the `release` environment.
+- Every publish step is idempotent, so a failed release can be re-run from the Actions tab (`workflow_dispatch` with the tag and `dry_run: false`). `dry_run: true` builds everything and publishes nothing.
+- Don't add a second release-please package, a second `VERSION`, or a second tag pattern.
 
 ---
 
