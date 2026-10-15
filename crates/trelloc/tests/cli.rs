@@ -301,3 +301,24 @@ async fn card_delete_refuses_without_yes() {
     assert!(stderr(&o).contains("--yes"), "{}", stderr(&o));
     assert!(server.received_requests().await.unwrap().is_empty());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn comment_add_reads_stdin_dash_text_from_arg() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/cards/AbCd1234/actions/comments"))
+        .and(wiremock::matchers::body_json(
+            json!({ "text": "Done in staging" }),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({ "id": "a9", "type": "commentCard", "date": "2026-10-14T00:00:00.000Z" }),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let o = Env::new(Some(server.uri()))
+        .run(&["comment", "add", "AbCd1234", "Done in staging"])
+        .await;
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(stdout(&o).contains("a9"));
+}

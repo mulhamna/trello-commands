@@ -310,3 +310,90 @@ async fn card_search_on_default_board_returns_refs() {
     assert_eq!(v["cards"][0]["list"]["name"], "Doing");
     assert_eq!(v["cards"][0]["members"][0]["username"], "me");
 }
+
+#[tokio::test]
+#[serial]
+async fn field_list_without_power_up_is_unavailable_and_clear_needs_confirm() {
+    let server = MockServer::start().await;
+    let _env = Env::new(Some(&server.uri()));
+    Mock::given(method("GET"))
+        .and(path(format!("/boards/{BOARD}/customFields")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&server)
+        .await;
+    mount_board(&server).await;
+    let (client, _server) = connect().await;
+    let err = call(&client, "trello_field_list", json!({}))
+        .await
+        .unwrap_err();
+    assert!(
+        err.contains("unavailable") && err.contains("Power-Up"),
+        "{err}"
+    );
+    let err = call(
+        &client,
+        "trello_field_clear",
+        json!({ "card": "AbCd1234", "field": "Points" }),
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("unsafe_operation"), "{err}");
+    for (tool, a) in [
+        ("trello_comment_delete", json!({ "comment_id": "a1" })),
+        ("trello_label_delete", json!({ "label": "bug" })),
+        (
+            "trello_checklist_delete",
+            json!({ "card": "AbCd1234", "checklist": "QA" }),
+        ),
+        (
+            "trello_checklist_item_delete",
+            json!({ "card": "AbCd1234", "item": "x" }),
+        ),
+        (
+            "trello_attachment_delete",
+            json!({ "card": "AbCd1234", "attachment_id": "x" }),
+        ),
+    ] {
+        let err = call(&client, tool, a).await.unwrap_err();
+        assert!(err.contains("unsafe_operation"), "{tool}: {err}");
+    }
+    assert!(server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .all(|r| r.method.as_str() == "GET"));
+}
+
+#[tokio::test]
+#[serial]
+async fn comment_add_and_attachment_validation() {
+    let server = MockServer::start().await;
+    let _env = Env::new(Some(&server.uri()));
+    Mock::given(method("POST"))
+        .and(path("/cards/AbCd1234/actions/comments"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "a1", "type": "commentCard", "date": "2026-10-14T00:00:00.000Z",
+            "data": { "text": "Looks good @alice" }, "memberCreator": { "id": "me1", "username": "me" }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let (client, _server) = connect().await;
+    let v = call(
+        &client,
+        "trello_comment_add",
+        json!({ "card": "AbCd1234", "text": "Looks good @alice" }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(v["author"], "me");
+    let err = call(
+        &client,
+        "trello_attachment_add",
+        json!({ "card": "AbCd1234" }),
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("validation_error"), "{err}");
+}
