@@ -233,3 +233,80 @@ async fn api_request_requires_confirm_for_writes() {
     .unwrap();
     assert_eq!(v[0]["name"], "x");
 }
+
+fn card(id: &str) -> Value {
+    json!({
+        "id": id, "idShort": 4, "name": "Fix login", "idBoard": BOARD, "idList": "l2",
+        "shortUrl": "https://trello.com/c/Cc000004", "idMembers": ["me1"],
+        "labels": [{ "id": "lb1", "name": "bug", "color": "red" }]
+    })
+}
+
+#[tokio::test]
+#[serial]
+async fn card_delete_needs_confirm_but_archive_does_not() {
+    let server = MockServer::start().await;
+    let _env = Env::new(Some(&server.uri()));
+    mount_board(&server).await;
+    let id = "6a00000000000000000000c1";
+    Mock::given(method("PUT"))
+        .and(path(format!("/cards/{id}")))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({ "closed": true, "id": id, "idBoard": BOARD })),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path(format!("/cards/{id}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let (client, _server) = connect().await;
+    let err = call(&client, "trello_card_delete", json!({ "card": id }))
+        .await
+        .unwrap_err();
+    assert!(err.contains("unsafe_operation"), "{err}");
+    let v = call(&client, "trello_card_archive", json!({ "card": id }))
+        .await
+        .unwrap();
+    assert_eq!(v["closed"], true);
+    let v = call(
+        &client,
+        "trello_card_delete",
+        json!({ "card": id, "confirm": true }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(v["deleted"], true);
+}
+
+#[tokio::test]
+#[serial]
+async fn card_search_on_default_board_returns_refs() {
+    let server = MockServer::start().await;
+    let _env = Env::new(Some(&server.uri()));
+    mount_board(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/batch"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            { "200": [card("6a00000000000000000000c1")] }
+        ])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let (client, _server) = connect().await;
+    let v = call(
+        &client,
+        "trello_card_search",
+        json!({ "labels": ["bug"], "boards": [BOARD] }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(v["mode"], "board_scan");
+    assert_eq!(v["cards"][0]["ref"], "AbCd0001#4");
+    assert_eq!(v["cards"][0]["list"]["name"], "Doing");
+    assert_eq!(v["cards"][0]["members"][0]["username"], "me");
+}

@@ -267,3 +267,37 @@ async fn config_set_and_get() {
     let o = env.run(&["config", "set", "timezone", "Mars/Base"]).await;
     assert!(!o.status.success());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn card_list_defaults_to_the_default_board() {
+    let server = MockServer::start().await;
+    mount_board(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/batch"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            { "200": [
+                { "id": "6a0000000000000000000001", "idShort": 1, "name": "Ship it", "idBoard": BOARD, "idList": "l2",
+                  "idMembers": ["me1"], "labels": [{ "id": "lb1", "name": "bug", "color": "red" }],
+                  "due": "2026-10-20T00:00:00.000Z" }
+            ] }
+        ])))
+        .mount(&server)
+        .await;
+    let o = Env::new(Some(server.uri())).run(&["card", "list"]).await;
+    assert!(o.status.success(), "{}", stderr(&o));
+    let out = stdout(&o);
+    for want in ["AbCd0001#1", "Ship it", "Doing", "@me", "bug", "2026-10-20"] {
+        assert!(out.contains(want), "{want} missing in:\n{out}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn card_delete_refuses_without_yes() {
+    let server = MockServer::start().await;
+    let o = Env::new(Some(server.uri()))
+        .run(&["card", "delete", "AbCd1234"])
+        .await;
+    assert!(!o.status.success());
+    assert!(stderr(&o).contains("--yes"), "{}", stderr(&o));
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
