@@ -5,6 +5,7 @@ pub mod client;
 pub mod config;
 pub mod error;
 pub mod model;
+pub mod ops;
 pub mod rate_limit;
 pub mod resolve;
 pub mod time;
