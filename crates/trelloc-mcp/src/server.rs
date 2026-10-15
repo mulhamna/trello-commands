@@ -13,11 +13,7 @@ use rmcp::{
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
-use crate::{
-    app,
-    error::AppResult,
-    models::{Account, ApiRequestArgs, BoardArgs, BoardListArgs, MemberListArgs, ToolResponse},
-};
+use crate::{app, error::AppResult, models::*};
 
 #[derive(Clone)]
 pub struct TrelloMcpServer {
@@ -168,6 +164,85 @@ impl TrelloMcpServer {
         Parameters(args): Parameters<MemberListArgs>,
     ) -> Result<Json<ToolResponse>, ErrorData> {
         respond(app::member_list(args).await)
+    }
+
+    // ── cards ───────────────────────────────────────────────────────────
+
+    #[tool(
+        name = "trello_card_search",
+        description = "Find cards. With `boards` or `lists` it scans those boards exactly (preferred, sees new cards immediately). With only `members: [\"me\"]` it reads your cards everywhere. `query` uses Trello search syntax and may lag a few seconds; the response's `mode` says which path ran. Filters: members, labels, due ranges, overdue, no_due, due_complete, created/active dates, has, custom `fields` (need a board), text. Returns compact summaries with `ref` (board#42) usable as `card` elsewhere; `detail: \"full\"` adds description, fields, checklists."
+    )]
+    pub async fn trello_card_search(
+        &self,
+        Parameters(args): Parameters<CardSearchArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::card_search(args).await)
+    }
+
+    #[tool(
+        name = "trello_card_get",
+        description = "One card in full: board, list, members, labels, dates, description, custom field values, checklists with items, attachments. `card` accepts an id, shortLink, card URL or \"board#42\". Optionally include the latest comments and activity."
+    )]
+    pub async fn trello_card_get(
+        &self,
+        Parameters(args): Parameters<CardGetArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::card_get(args).await)
+    }
+
+    #[tool(
+        name = "trello_card_create",
+        description = "Create a card in a list. `list` is a name on `board` (or the default board) or \"Board/List\". Members, labels, custom field values and dropdown options are given by name; dates like \"fri\" work. Checklists with items and a copy source are optional. Check `warnings` for parts that failed (e.g. a custom field)."
+    )]
+    pub async fn trello_card_create(
+        &self,
+        Parameters(args): Parameters<CardCreateArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::card_create(args).await)
+    }
+
+    #[tool(
+        name = "trello_card_update",
+        description = "Change a card. Members and labels are added/removed individually (members_add, labels_remove, …), never by replacing the whole set. `due: null` clears the due date. Custom fields by name; null clears one. To move between lists use trello_card_move; to archive use trello_card_archive."
+    )]
+    pub async fn trello_card_update(
+        &self,
+        Parameters(args): Parameters<CardUpdateArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::card_update(args).await)
+    }
+
+    #[tool(
+        name = "trello_card_move",
+        description = "Move a card to another list (status change) on the same board, or to \"Board/List\" on another board. Labels, members and custom fields are board-scoped: cross-board moves map labels by name and return `warnings` for anything that will be dropped — tell the user."
+    )]
+    pub async fn trello_card_move(
+        &self,
+        Parameters(args): Parameters<CardMoveArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::card_move(args).await)
+    }
+
+    #[tool(
+        name = "trello_card_archive",
+        description = "Archive a card (reversible; the safe way to remove a card) or restore it with unarchive=true. No confirmation needed."
+    )]
+    pub async fn trello_card_archive(
+        &self,
+        Parameters(args): Parameters<CardArchiveArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::card_archive(args).await)
+    }
+
+    #[tool(
+        name = "trello_card_delete",
+        description = "Permanently delete a card. Cannot be undone; prefer trello_card_archive. Requires confirm=true."
+    )]
+    pub async fn trello_card_delete(
+        &self,
+        Parameters(args): Parameters<CardConfirmArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::card_delete(args).await)
     }
 
     // ── escape hatch ────────────────────────────────────────────────────
