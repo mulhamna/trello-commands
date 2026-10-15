@@ -11,6 +11,7 @@ use trelloc_core::TrelloError;
 
 use cli::{
     auth::{AuthCmd, ConfigCmd, WorkspaceCmd},
+    card::CardCmd,
     hierarchy::{AliasCmd, BoardCmd, CacheCmd, ListCmd, MemberCmd},
     mcp::McpCmd,
 };
@@ -51,6 +52,8 @@ struct Cli {
     yes: bool,
 }
 
+// ponytail: parsed once per process, so the size difference is irrelevant.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Subcommand)]
 enum Commands {
     /// Log in, check status, manage profiles
@@ -78,6 +81,9 @@ enum Commands {
     /// Clear cached boards and board snapshots
     #[command(subcommand)]
     Cache(CacheCmd),
+    /// List, view, create, update, move, copy, archive and delete cards
+    #[command(subcommand)]
+    Card(CardCmd),
     /// Raw API request, e.g. `trelloc api GET /members/me/boards --query fields=name`
     Api {
         method: String,
@@ -122,6 +128,7 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::Alias(c) => hierarchy::alias(&ctx, c).await,
         Commands::Member(c) => hierarchy::member(&ctx, c).await,
         Commands::Cache(c) => hierarchy::cache(&ctx, c).await,
+        Commands::Card(c) => card::run(&ctx, c).await,
         Commands::Api {
             method,
             path,
