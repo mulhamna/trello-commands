@@ -419,3 +419,153 @@ pub struct AttachmentDeleteArgs {
     /// Must be true.
     pub confirm: Option<bool>,
 }
+
+// ── bulk, management, reports ───────────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct BulkCreateArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    /// List for every card (name on the default board, id, or "Board/List"); a card's own `list` wins.
+    pub list: Option<String>,
+    pub cards: Vec<CardCreateItem>,
+    /// Return the plan without creating anything.
+    pub dry_run: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct CardCreateItem {
+    pub name: String,
+    pub list: Option<String>,
+    pub desc: Option<String>,
+    pub members: Option<Vec<String>>,
+    pub labels: Option<Vec<String>>,
+    pub due: Option<String>,
+    pub custom_fields: Option<BTreeMap<String, Value>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+pub struct BulkChangesArg {
+    /// Move to this list ("List" or "Board/List").
+    pub list: Option<String>,
+    pub labels_add: Option<Vec<String>>,
+    pub labels_remove: Option<Vec<String>>,
+    pub members_add: Option<Vec<String>>,
+    /// Date or "none".
+    pub due: Option<String>,
+    pub due_complete: Option<bool>,
+    /// true archives every card.
+    pub archive: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct BulkUpdateArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    /// Explicit card refs. Give either `cards` or `filter`.
+    pub cards: Option<Vec<String>>,
+    /// Same input as trello_card_search.
+    pub filter: Option<CardSearchArgs>,
+    pub changes: BulkChangesArg,
+    /// Return matching cards and the changes without applying them.
+    pub dry_run: Option<bool>,
+    /// Required (true) when more than one card would change.
+    pub confirm: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct BatchArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    /// Steps run in order: {"op":"create", "name", "list", …}, {"op":"update", "card", …},
+    /// {"op":"move", "card", "list"}, {"op":"comment", "card", "text"},
+    /// {"op":"archive", "card"}, {"op":"delete", "card"}.
+    #[schemars(schema_with = "any_json_array")]
+    pub ops: Vec<Value>,
+    pub dry_run: Option<bool>,
+    /// Required (true) for more than one op or any delete.
+    pub confirm: Option<bool>,
+}
+
+fn any_json_array(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+    schemars::json_schema!({ "type": "array", "items": { "type": "object", "additionalProperties": true } })
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct BoardCreateArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub name: String,
+    /// Copy lists, labels and cards from this board.
+    pub from_board: Option<String>,
+    /// Add To Do / Doing / Done (default true; ignored with from_board).
+    pub default_lists: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct BoardUpdateArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub board: String,
+    pub name: Option<String>,
+    pub desc: Option<String>,
+    /// true archives the board, false restores it.
+    pub closed: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct BoardDeleteArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub board: String,
+    /// Must be true: deletes every list and card on the board.
+    pub confirm: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct ListCreateArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    /// Board (default: the profile's default board).
+    pub board: Option<String>,
+    pub name: String,
+    /// "top", "bottom" or a number.
+    pub pos: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct ListUpdateArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub board: Option<String>,
+    /// List name or id (archived lists: id).
+    pub list: String,
+    pub name: Option<String>,
+    /// "top", "bottom" or a number.
+    pub pos: Option<String>,
+    /// true archives the list, false restores it.
+    pub closed: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+pub struct StandupArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    /// Default "yesterday".
+    pub since: Option<String>,
+    pub board: Option<String>,
+    /// Username; default: me.
+    pub member: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+pub struct ActivityArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub board: Option<String>,
+    pub card: Option<String>,
+    pub since: Option<String>,
+    pub member: Option<String>,
+    /// Default 50.
+    pub limit: Option<usize>,
+}

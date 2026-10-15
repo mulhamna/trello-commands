@@ -467,6 +467,137 @@ impl TrelloMcpServer {
         respond(app::attachment_delete(args).await)
     }
 
+    // ── bulk, management, reports ───────────────────────────────────────
+
+    #[tool(
+        name = "trello_card_copy",
+        description = "Copy a card into a list (\"List\" or \"Board/List\"), keeping checklists, labels, attachments etc. per `keep` (default all)."
+    )]
+    pub async fn trello_card_copy(
+        &self,
+        Parameters(args): Parameters<CardCopyArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::card_copy(args).await)
+    }
+
+    #[tool(
+        name = "trello_card_bulk_create",
+        description = "Create many cards at once (in `list`, or each card's own list). dry_run returns the plan. Per-card results; one failure doesn't stop the rest."
+    )]
+    pub async fn trello_card_bulk_create(
+        &self,
+        Parameters(args): Parameters<BulkCreateArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::card_bulk_create(args).await)
+    }
+
+    #[tool(
+        name = "trello_card_bulk_update",
+        description = "Apply the same changes (move, labels, members, due, done, archive) to explicit `cards` or every card matching `filter` (trello_card_search input). Run with dry_run=true first; more than one card needs confirm=true. Requests are paced to stay inside Trello's rate limit."
+    )]
+    pub async fn trello_card_bulk_update(
+        &self,
+        Parameters(args): Parameters<BulkUpdateArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::card_bulk_update(args).await)
+    }
+
+    #[tool(
+        name = "trello_batch",
+        description = "Run mixed steps in order: create, update, move, comment, archive, delete. dry_run lists the plan; more than one step or any delete needs confirm=true. Results per step."
+    )]
+    pub async fn trello_batch(
+        &self,
+        Parameters(args): Parameters<BatchArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::batch(args).await)
+    }
+
+    #[tool(
+        name = "trello_board_create",
+        description = "Create a board (in `workspace` if given), optionally copying another board."
+    )]
+    pub async fn trello_board_create(
+        &self,
+        Parameters(args): Parameters<BoardCreateArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::board_create(args).await)
+    }
+
+    #[tool(
+        name = "trello_board_update",
+        description = "Rename a board, change its description, or archive/restore it (closed)."
+    )]
+    pub async fn trello_board_update(
+        &self,
+        Parameters(args): Parameters<BoardUpdateArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::board_update(args).await)
+    }
+
+    #[tool(
+        name = "trello_board_delete",
+        description = "Permanently delete a board with every list and card. Prefer trello_board_update closed=true (archive). Requires confirm=true."
+    )]
+    pub async fn trello_board_delete(
+        &self,
+        Parameters(args): Parameters<BoardDeleteArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::board_delete(args).await)
+    }
+
+    #[tool(name = "trello_list_create", description = "Add a list to a board.")]
+    pub async fn trello_list_create(
+        &self,
+        Parameters(args): Parameters<ListCreateArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::list_create(args).await)
+    }
+
+    #[tool(
+        name = "trello_list_update",
+        description = "Rename, reposition, or archive/restore (closed) a list."
+    )]
+    pub async fn trello_list_update(
+        &self,
+        Parameters(args): Parameters<ListUpdateArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::list_update(args).await)
+    }
+
+    #[tool(
+        name = "trello_standup",
+        description = "Daily standup for me (or `member`): cards moved, completed and commented since `since` (default yesterday), plus open, due-soon and overdue cards."
+    )]
+    pub async fn trello_standup(
+        &self,
+        Parameters(args): Parameters<StandupArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::standup(args).await)
+    }
+
+    #[tool(
+        name = "trello_board_summary",
+        description = "Card counts on a board: per list, per member, overdue, without due date, done."
+    )]
+    pub async fn trello_board_summary(
+        &self,
+        Parameters(args): Parameters<BoardArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::board_summary(args).await)
+    }
+
+    #[tool(
+        name = "trello_activity",
+        description = "Recent actions on a card, a board, or (neither) your own, newest first; filter by member and since."
+    )]
+    pub async fn trello_activity(
+        &self,
+        Parameters(args): Parameters<ActivityArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::activity(args).await)
+    }
+
     // ── escape hatch ────────────────────────────────────────────────────
 
     #[tool(

@@ -655,3 +655,245 @@ pub async fn attachment_delete(a: AttachmentDeleteArgs) -> AppResult<Value> {
     ops::attachment_delete(&ctx.resolver(), &a.card, &a.attachment_id).await?;
     Ok(json!({ "deleted": true, "attachment_id": a.attachment_id }))
 }
+
+// ── bulk, management, reports ───────────────────────────────────────────
+
+pub async fn card_bulk_create(a: BulkCreateArgs) -> AppResult<Value> {
+    let inputs: Vec<ops::CardInput> = a
+        .cards
+        .iter()
+        .map(|c| {
+            let (fields, clear) = fields_input(&c.custom_fields);
+            if !clear.is_empty() {
+                return Err(AppError::validation(
+                    "custom_fields values can't be null on create",
+                ));
+            }
+            Ok(ops::CardInput {
+                name: c.name.clone(),
+                list: c.list.clone(),
+                desc: c.desc.clone(),
+                members: strs(&c.members),
+                labels: strs(&c.labels),
+                due: c.due.clone(),
+                fields,
+                ..Default::default()
+            })
+        })
+        .collect::<AppResult<_>>()?;
+    if inputs.is_empty() {
+        return Err(AppError::validation("cards is empty"));
+    }
+    if a.dry_run.unwrap_or(false) {
+        return Ok(json!({
+            "dry_run": true,
+            "would_create": inputs.iter().map(|c| json!({
+                "name": c.name, "list": c.list.clone().or_else(|| a.list.clone()),
+            })).collect::<Vec<_>>(),
+        }));
+    }
+    let ctx = Ctx::load(&a.account)?;
+    let r = ctx.resolver();
+    let results = ops::bulk_create(&r, a.list.as_deref(), inputs, || {}).await;
+    let ok = results.iter().filter(|(_, r)| r.is_ok()).count();
+    Ok(json!({
+        "total": results.len(),
+        "ok": ok,
+        "failed": results.len() - ok,
+        "results": results.iter().map(|(name, r)| match r {
+            Ok(w) => json!({ "name": name, "ok": true, "card": ops::card_summary(&w.card, None, ctx.tz()), "warnings": w.warnings }),
+            Err(e) => json!({ "name": name, "ok": false, "error": e.to_string() }),
+        }).collect::<Vec<_>>(),
+    }))
+}
+
+fn changes(c: &BulkChangesArg) -> ops::BulkChanges {
+    ops::BulkChanges {
+        list: c.list.clone(),
+        labels_add: strs(&c.labels_add),
+        labels_remove: strs(&c.labels_remove),
+        members_add: strs(&c.members_add),
+        due: c.due.clone(),
+        due_complete: c.due_complete,
+        archive: c.archive,
+        ..Default::default()
+    }
+}
+
+pub async fn card_bulk_update(a: BulkUpdateArgs) -> AppResult<Value> {
+    let ch = changes(&a.changes);
+    if ch.is_empty() {
+        return Err(AppError::validation("changes is empty"));
+    }
+    let ctx = Ctx::load(&a.account)?;
+    let r = ctx.resolver();
+    let cards: Vec<String> = match (&a.cards, &a.filter) {
+        (Some(c), None) => c.clone(),
+        (None, Some(f)) => {
+            let mut input = search_input(f);
+            input.limit = Some(
+                f.limit
+                    .unwrap_or(MAX_SEARCH_LIMIT)
+                    .clamp(1, MAX_SEARCH_LIMIT),
+            );
+            ops::search_cards(&r, &input)
+                .await?
+                .cards
+                .into_iter()
+                .map(|c| c.id)
+                .collect()
+        }
+        _ => {
+            return Err(AppError::validation(
+                "give exactly one of `cards` or `filter`",
+            ))
+        }
+    };
+    if a.dry_run.unwrap_or(false) || cards.is_empty() {
+        return Ok(json!({
+            "dry_run": true,
+            "matched": cards.len(),
+            "cards": cards,
+            "changes": ch.describe(),
+        }));
+    }
+    if cards.len() > 1 {
+        require_confirm(a.confirm)?;
+    }
+    let results = ops::bulk_update(&r, cards, &ch, || {}).await?;
+    Ok(ops::bulk_summary(&results))
+}
+
+pub async fn batch(a: BatchArgs) -> AppResult<Value> {
+    let steps: Vec<ops::BatchOp> = a
+        .ops
+        .iter()
+        .enumerate()
+        .map(|(i, v)| {
+            serde_json::from_value(v.clone())
+                .map_err(|e| AppError::validation(format!("ops[{i}]: {e}")))
+        })
+        .collect::<AppResult<_>>()?;
+    if steps.is_empty() {
+        return Err(AppError::validation("ops is empty"));
+    }
+    if a.dry_run.unwrap_or(false) {
+        return Ok(json!({
+            "dry_run": true,
+            "ops": steps.iter().map(ops::BatchOp::describe).collect::<Vec<_>>(),
+        }));
+    }
+    if steps.len() > 1 || steps.iter().any(ops::BatchOp::is_destructive) {
+        require_confirm(a.confirm)?;
+    }
+    let ctx = Ctx::load(&a.account)?;
+    let r = ctx.resolver();
+    let mut results = Vec::new();
+    for step in &steps {
+        results.push(match ops::run_batch_op(&r, step).await {
+            Ok(v) => json!({ "op": step.describe(), "ok": true, "result": v }),
+            Err(e) => json!({ "op": step.describe(), "ok": false, "error": AppError::from(e).to_mcp().message }),
+        });
+    }
+    let failed = results.iter().filter(|v| v["ok"] == false).count();
+    Ok(json!({ "total": results.len(), "failed": failed, "results": results }))
+}
+
+pub async fn board_create(a: BoardCreateArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    let b = ops::board_create(
+        &ctx.resolver(),
+        &a.name,
+        a.account.workspace.as_deref(),
+        a.from_board.as_deref(),
+        a.default_lists.unwrap_or(true),
+    )
+    .await?;
+    Ok(ops::board_summary(&b))
+}
+
+pub async fn board_update(a: BoardUpdateArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    let b = ops::board_update(
+        &ctx.resolver(),
+        &a.board,
+        &ops::BoardUpdate {
+            name: a.name.clone(),
+            desc: a.desc.clone(),
+            closed: a.closed,
+        },
+    )
+    .await?;
+    Ok(ops::board_summary(&b))
+}
+
+pub async fn board_delete(a: BoardDeleteArgs) -> AppResult<Value> {
+    require_confirm(a.confirm)?;
+    let ctx = Ctx::load(&a.account)?;
+    let b = ops::board_delete(&ctx.resolver(), &a.board).await?;
+    Ok(json!({ "deleted": true, "board": b }))
+}
+
+pub async fn list_create(a: ListCreateArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    Ok(json!(
+        ops::list_create(
+            &ctx.resolver(),
+            a.board.as_deref(),
+            &a.name,
+            a.pos.as_deref()
+        )
+        .await?
+    ))
+}
+
+pub async fn list_update(a: ListUpdateArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    Ok(json!(
+        ops::list_update(
+            &ctx.resolver(),
+            a.board.as_deref(),
+            &a.list,
+            &ops::ListUpdate {
+                name: a.name.clone(),
+                pos: a.pos.clone(),
+                closed: a.closed,
+            },
+        )
+        .await?
+    ))
+}
+
+pub async fn standup(a: StandupArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    let st = ops::standup(
+        &ctx.resolver(),
+        a.since.as_deref().unwrap_or("yesterday"),
+        a.board.as_deref(),
+        a.member.as_deref(),
+    )
+    .await?;
+    Ok(json!(st))
+}
+
+pub async fn board_summary(a: BoardArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    Ok(ops::board_report(&ctx.resolver(), a.board.as_deref()).await?)
+}
+
+pub async fn activity(a: ActivityArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    Ok(json!(
+        ops::activity(
+            &ctx.resolver(),
+            &ops::ActivityInput {
+                board: a.board.clone(),
+                card: a.card.clone(),
+                since: a.since.clone(),
+                member: a.member.clone(),
+                limit: a.limit,
+            },
+        )
+        .await?
+    ))
+}
