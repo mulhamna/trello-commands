@@ -1,0 +1,199 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      workflows: ${{ steps.filter.outputs.workflows }}
+      rust: ${{ steps.filter.outputs.rust }}
+      rust_core: ${{ steps.filter.outputs.rust_core }}
+      rust_cli: ${{ steps.filter.outputs.rust_cli }}
+      rust_mcp: ${{ steps.filter.outputs.rust_mcp }}
+      docs: ${{ steps.filter.outputs.docs }}
+      release: ${{ steps.filter.outputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+          fi
+
+          # After a force-push (or on the first push) github.event.before may not
+          # exist in the repository — fall back to the parent commit, or the empty
+          # tree for a root commit.
+          if [ -z "$BASE_SHA" ] \
+            || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ] \
+            || ! git cat-file -e "$BASE_SHA" 2>/dev/null; then
+            BASE_SHA=$(git rev-parse --verify --quiet "$HEAD_SHA~1" || git hash-object -t tree /dev/null)
+          fi
+
+          changed() {
+            local name="$1"
+            shift
+            if git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- "$@"; then
+              echo "$name=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "$name=true" >> "$GITHUB_OUTPUT"
+            fi
+          }
+
+          changed workflows '.github/workflows/**'
+          changed rust 'Cargo.toml' 'Cargo.lock' 'deny.toml' 'crates/**'
+          changed rust_core 'Cargo.toml' 'Cargo.lock' 'crates/trelloc-core/**'
+          changed rust_cli 'Cargo.toml' 'Cargo.lock' 'crates/trelloc/**'
+          changed rust_mcp 'Cargo.toml' 'Cargo.lock' 'crates/trelloc-mcp/**'
+          changed docs 'README.md' 'docs/**' 'crates/*/README.md' 'packaging/**'
+          changed release \
+            '.github/workflows/release*.yml' \
+            'release-please-config.json' \
+            '.release-please-manifest.json' \
+            'VERSION' \
+            'CHANGELOG.md'
+
+  docs-check:
+    name: Docs & version check
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.release == 'true' || needs.changes.outputs.workflows == 'true' || needs.changes.outputs.docs == 'true'
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check workspace version matches VERSION
+        run: |
+          VERSION=$(tr -d '[:space:]' < VERSION)
+          CARGO_VER=$(sed -n 's/^version = "\([^"]*\)".*/\1/p' Cargo.toml | head -1)
+          echo "VERSION:    $VERSION"
+          echo "Cargo.toml: $CARGO_VER"
+          test "$VERSION" = "$CARGO_VER"
+          for crate in trelloc-core trelloc-mcp; do
+            DEP_VER=$(sed -n "s/^${crate} = .*version = \"\([^\"]*\)\".*/\1/p" Cargo.toml)
+            echo "dep $crate: $DEP_VER"
+            test "$VERSION" = "$DEP_VER"
+          done
+
+      - name: Install Rust stable (for dry-run publish check)
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@258712b0b7b1ddf8bddc9fc3b0faca682b2736c3 # v2
+
+      - name: cargo publish --dry-run (trelloc-core)
+        run: cargo publish --dry-run -p trelloc-core
+
+  check:
+    name: Rust check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.workflows == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@258712b0b7b1ddf8bddc9fc3b0faca682b2736c3 # v2
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Workspace compile check
+        run: cargo check --workspace --all-targets
+
+      - name: Exactly one binary is produced
+        shell: bash
+        run: |
+          cargo build --workspace
+          count=$(cargo metadata --no-deps --format-version 1 | jq '[.packages[].targets[] | select(.kind[] == "bin")] | length')
+          echo "binaries: $count"
+          test "$count" = "1"
+
+  test-core:
+    name: Core tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust_core == 'true' || needs.changes.outputs.workflows == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@258712b0b7b1ddf8bddc9fc3b0faca682b2736c3 # v2
+      - name: Run trelloc-core tests
+        run: cargo test -p trelloc-core
+
+  test-cli:
+    name: CLI tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust_cli == 'true' || needs.changes.outputs.workflows == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@258712b0b7b1ddf8bddc9fc3b0faca682b2736c3 # v2
+      - name: Run trelloc tests
+        run: cargo test -p trelloc
+
+  test-mcp:
+    name: MCP tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust_mcp == 'true' || needs.changes.outputs.workflows == 'true' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@258712b0b7b1ddf8bddc9fc3b0faca682b2736c3 # v2
+      - name: Run trelloc-mcp tests
+        run: cargo test -p trelloc-mcp
+

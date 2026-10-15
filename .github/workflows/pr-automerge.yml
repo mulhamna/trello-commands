@@ -1,0 +1,33 @@
+name: PR automerge
+
+on:
+  pull_request_target:
+    types: [labeled, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: pr-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  enable-automerge:
+    if: >-
+      github.event.pull_request.draft == false &&
+      contains(github.event.pull_request.labels.*.name, 'automerge')
+    runs-on: ubuntu-latest
+    # Merging uses the RELEASE_PLEASE_TOKEN PAT, not GITHUB_TOKEN.
+    permissions: {}
+    steps:
+      - name: Enable auto-merge (squash) for labeled PRs only
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set +e
+          gh pr merge "$PR" --auto --squash
+          status=$?
+          set -e
+          if [ $status -ne 0 ]; then
+            echo "Auto-merge not enabled yet. This is non-fatal when approvals or required checks are still pending."
+          fi

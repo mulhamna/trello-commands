@@ -1,0 +1,58 @@
+# cargo-deny configuration
+# Docs: https://embarkstudios.github.io/cargo-deny/
+#
+# Uses cargo-deny 0.16+ format (opt-in via `version = 2` markers).
+# Deprecated fields (vulnerability, notice, yanked, unlicensed, copyleft,
+# allow-osi-fsf-free, default) have been removed — their behavior is now
+# controlled implicitly by cargo-deny defaults in v2 mode.
+
+[advisories]
+version = 2
+# Scope of unmaintained check: "all", "workspace", "transitive", "none"
+#
+# We use "workspace" instead of "all" so cargo-deny only fails when a crate we
+# depend on *directly* is unmaintained. Transitive unmaintained deps (via
+# inquire/indicatif) are out of our control — the fix
+# has to come from upstream, and blocking our CI on them is noise, not signal.
+unmaintained = "workspace"
+# Advisory IDs to ignore (add with a comment justification).
+# Leave empty unless we genuinely want to silence a specific advisory.
+ignore = []
+
+[licenses]
+version = 2
+# Only these licenses are allowed — anything else is denied by default in v2
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "ISC",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "Unicode-3.0",
+  "Zlib",
+  "CC0-1.0",
+  "MPL-2.0",
+  # CDLA-Permissive-2.0 is used by webpki-roots to ship Mozilla's CA cert
+  # bundle. It is OSI-friendly and comparable to MIT/Apache in permissiveness.
+  "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.8
+exceptions = []
+
+[bans]
+# Warn if the same crate appears at multiple versions in the dep tree
+multiple-versions = "warn"
+# Deny wildcard dep specs (e.g. dep = "*") — they are unpinnable and risky
+wildcards = "deny"
+highlight = "all"
+deny = []
+skip = []
+skip-tree = []
+
+[sources]
+# Deny crates from unknown registries — prevents dependency confusion attacks
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
