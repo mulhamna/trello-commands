@@ -188,7 +188,8 @@ pub async fn login(
             .prompt()?
     {
         println!();
-        super::mcp::interactive_install(ctx).await?;
+        let plan = Box::pin(super::mcp::interactive_setup(ctx, "trelloc")).await?;
+        super::mcp::install_plan(&plan)?;
     }
     Ok(())
 }
