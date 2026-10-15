@@ -185,6 +185,7 @@ Paths are relative to `/1`. Credentials are added as the header. Non-GET asks fo
 trelloc config get|set <key> [value]          # default_board, default_list, workspace, timezone, default_card_limit, timeout_secs
 trelloc mcp serve [--transport stdio|streamable-http] [--host] [--port] [--path]
 trelloc mcp doctor                            # binary on PATH, credentials, a test call, rate-limit headroom
-trelloc mcp install --client claude-code|claude-desktop|cursor|codex|gemini-cli|vscode|… [--profile]
+trelloc mcp install [--client claude-code|claude-desktop|cursor|codex|gemini-cli|vscode|…]… [--server-profile <p>]… [--dry-run] [--print] [--force]
+                                              # no --client: interactive picker; global --profile pins that profile
 ```
-`mcp install` writes `command: "trelloc", args: ["mcp", "serve"]` (+ `env.TRELLO_PROFILE` when `--profile` is given). Never writes the key or token into client configs.
+`mcp install` writes `command: "<path to trelloc>", args: ["mcp", "serve"]` (+ `env.TRELLO_PROFILE` when a profile is pinned; several profiles become `trelloc-<profile>` entries). Never writes the key or token into client configs.
