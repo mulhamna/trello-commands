@@ -3,15 +3,15 @@ members = ["crates/trelloc-core", "crates/trelloc-mcp", "crates/trelloc"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0" # x-release-please-version
+version = "0.0.0" # x-release-please-version
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/mulhamna/trello-commands"
 homepage = "https://github.com/mulhamna/trello-commands"
 
 [workspace.dependencies]
-trelloc-core = { path = "crates/trelloc-core", version = "0.1.0" } # x-release-please-version
-trelloc-mcp = { path = "crates/trelloc-mcp", version = "0.1.0" } # x-release-please-version
+trelloc-core = { path = "crates/trelloc-core", version = "0.0.0" } # x-release-please-version
+trelloc-mcp = { path = "crates/trelloc-mcp", version = "0.0.0" } # x-release-please-version
 
 anyhow = "1"
 axum = "0.8"
