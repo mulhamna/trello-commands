@@ -1,6 +1,6 @@
 # trelloc
 
-**Unofficial** Trello CLI and MCP server in one Rust binary. Sibling of [clickup-commands](https://github.com/mulhamna/clickup-commands) and [jira-commands](https://github.com/mulhamna/jira-commands).
+**Unofficial** Trello CLI and MCP server in one Rust binary. Sibling of [jira-commands](https://github.com/mulhamna/jira-commands).
 
 > Status: pre-alpha, under construction. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
@@ -84,7 +84,7 @@ Credentials stay in `~/.config/trelloc/config.toml` (or `TRELLO_API_KEY` / `TREL
 ## Docs
 
 - [Roadmap](docs/ROADMAP.md) · [Architecture](docs/ARCHITECTURE.md) · [CLI spec](docs/CLI.md) · [MCP tools](docs/MCP.md)
-- [Trello API notes](docs/TRELLO-API.md) · [Porting map from clickup-commands](docs/CLICKUP-MAPPING.md) · [Onboarding](docs/ONBOARDING.md)
+- [Trello API notes](docs/TRELLO-API.md) · [Onboarding](docs/ONBOARDING.md)
 
 ## License
 
