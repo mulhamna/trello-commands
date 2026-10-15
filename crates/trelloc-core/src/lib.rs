@@ -2,6 +2,7 @@
 
 pub mod config;
 pub mod error;
+pub mod rate_limit;
 pub mod time;
 
 pub use config::TrelloConfig;
