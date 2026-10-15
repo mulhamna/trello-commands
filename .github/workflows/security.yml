@@ -1,0 +1,116 @@
+name: Security
+
+# Runs on every PR (to catch backdoors before merge) and weekly on main
+# (to catch newly published CVEs in existing deps).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'  # Every Monday 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  # ── 0. CodeQL / static analysis ───────────────────────────────────────────
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["rust"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v3
+
+  # ── 1. CVE scan (rustsec advisory database) ───────────────────────────────
+  # Uses plain shell commands instead of rustsec/audit-check action to avoid
+  # GitHub Issues creation (which requires elevated token scopes and fails on
+  # repos where Issues are disabled).
+  cargo-audit:
+    name: cargo audit (CVE scan)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@258712b0b7b1ddf8bddc9fc3b0faca682b2736c3 # v2
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Run cargo audit
+        # Fails on known vulnerabilities (CVE) in the advisory db.
+        # Warnings (unmaintained / unsound) do NOT fail the build — those are
+        # surfaced by cargo-deny separately.
+        run: cargo audit
+
+  # ── 2. License, ban, and source policy ───────────────────────────────────
+  cargo-deny:
+    name: cargo deny (license + ban + sources)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
+        with:
+          command: check all
+
+  # ── 3. OpenSSF Scorecard (supply-chain health) ────────────────────────────
+  # Scores the repo on: branch protection, CI, dependency pinning, token perms,
+  # signed releases, dangerous workflows, etc.
+  # Results appear in the GitHub Security tab as SARIF alerts.
+  scorecard:
+    name: OpenSSF Scorecard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Only run on trusted repo events — scorecard needs write access not available to
+    # fork PRs, and the results are repo-level, not per-PR. Include manual
+    # workflow_dispatch so maintainers can refresh Scorecard after settings changes.
+    if: github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      security-events: write  # upload SARIF to Security tab
+      id-token: write         # publish results to deps.dev
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        with:
+          results_file: scorecard-results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scorecard-sarif
+          path: scorecard-results.sarif
+          retention-days: 5
+
+      - uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v3
+        with:
+          sarif_file: scorecard-results.sarif

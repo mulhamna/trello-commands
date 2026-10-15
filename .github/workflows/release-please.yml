@@ -1,0 +1,84 @@
+name: release-please
+
+# One lane: tag vX.Y.Z covers all three crates, the npm package and the
+# package manifests. The tag push (made with a PAT so it can trigger
+# workflows) starts release.yml, which builds and publishes via OIDC.
+
+on:
+  # Prepare or refresh the release PR after batching changes.
+  workflow_dispatch:
+  # Finalize a merged release PR into a tag + GitHub Release.
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    # Manual runs prepare/update the release PR. Pull request runs only
+    # finalize a merged release-please PR, never a feature PR.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release-please--'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
+        id: release
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          target-branch: main
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Prefix release title with product name
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          gh release edit "${{ steps.release.outputs.tag_name }}" \
+            --title "trelloc ${{ steps.release.outputs.tag_name }}"
+
+      # The simple release type bumps Cargo.toml through the generic
+      # x-release-please-version markers but doesn't know about Cargo.lock.
+      # Re-resolve the workspace members on the release branch so the
+      # tagged commit builds with --locked.
+      - name: Sync Cargo.lock on the release PR
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          RELEASE_PR: ${{ steps.release.outputs.pr }}
+        run: |
+          branch=$(jq -r '.headBranchName // empty' <<<"$RELEASE_PR")
+          if [ -z "$branch" ]; then
+            branch=$(gh pr list --state open --label "autorelease: pending" \
+              --json headRefName --jq '.[0].headRefName')
+          fi
+          if [ -z "$branch" ]; then
+            echo "no open release PR; nothing to sync"
+            exit 0
+          fi
+          git fetch origin "$branch"
+          git checkout "$branch"
+          cargo update --workspace
+          if git diff --quiet -- Cargo.lock; then
+            echo "Cargo.lock already in sync"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock
+          git commit -m "chore: sync Cargo.lock"
+          git push origin "$branch"
