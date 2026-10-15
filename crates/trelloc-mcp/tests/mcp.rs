@@ -397,3 +397,97 @@ async fn comment_add_and_attachment_validation() {
     .unwrap_err();
     assert!(err.contains("validation_error"), "{err}");
 }
+
+async fn mount_two_cards(server: &MockServer) {
+    Mock::given(method("GET"))
+        .and(path("/batch"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            { "200": [card("6a00000000000000000000c1"), card("6a00000000000000000000c2")] }
+        ])))
+        .mount(server)
+        .await;
+}
+
+fn only_reads(requests: &[wiremock::Request]) -> bool {
+    requests.iter().all(|r| r.method.as_str() == "GET")
+}
+
+#[tokio::test]
+#[serial]
+async fn bulk_update_dry_run_and_confirm() {
+    let server = MockServer::start().await;
+    let _env = Env::new(Some(&server.uri()));
+    mount_board(&server).await;
+    mount_two_cards(&server).await;
+    let (client, _server) = connect().await;
+    let filter = json!({ "boards": [BOARD] });
+    let v = call(
+        &client,
+        "trello_card_bulk_update",
+        json!({ "filter": filter, "changes": { "due_complete": true }, "dry_run": true }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(v["matched"], 2);
+    assert!(only_reads(&server.received_requests().await.unwrap()));
+    let err = call(
+        &client,
+        "trello_card_bulk_update",
+        json!({ "filter": filter, "changes": { "due_complete": true } }),
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("unsafe_operation"), "{err}");
+    assert!(only_reads(&server.received_requests().await.unwrap()));
+
+    Mock::given(method("PUT"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(card("6a00000000000000000000c1")))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let v = call(
+        &client,
+        "trello_card_bulk_update",
+        json!({ "filter": filter, "changes": { "due_complete": true }, "confirm": true }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(v["ok"], 2);
+}
+
+#[tokio::test]
+#[serial]
+async fn batch_dry_run_and_validation() {
+    let server = MockServer::start().await;
+    let _env = Env::new(Some(&server.uri()));
+    let (client, _server) = connect().await;
+    let v = call(
+        &client,
+        "trello_batch",
+        json!({ "ops": [
+            { "op": "create", "name": "A", "list": "To Do" },
+            { "op": "delete", "card": "AbCd1234" }
+        ], "dry_run": true }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(v["ops"][0], "create 'A' in To Do");
+    assert_eq!(v["ops"][1], "delete AbCd1234 (permanent)");
+    let err = call(
+        &client,
+        "trello_batch",
+        json!({ "ops": [{ "op": "explode" }] }),
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("validation_error"), "{err}");
+    let err = call(
+        &client,
+        "trello_batch",
+        json!({ "ops": [{ "op": "delete", "card": "AbCd1234" }] }),
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("unsafe_operation"), "{err}");
+    assert!(server.received_requests().await.unwrap().is_empty());
+}

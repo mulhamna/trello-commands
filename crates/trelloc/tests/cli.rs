@@ -322,3 +322,67 @@ async fn comment_add_reads_stdin_dash_text_from_arg() {
     assert!(o.status.success(), "{}", stderr(&o));
     assert!(stdout(&o).contains("a9"));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn bulk_dry_run_makes_no_writes() {
+    let server = MockServer::start().await;
+    mount_board(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/batch"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            { "200": [
+                { "id": "6a0000000000000000000001", "idShort": 1, "name": "One", "idBoard": BOARD, "idList": "l1" },
+                { "id": "6a0000000000000000000002", "idShort": 2, "name": "Two", "idBoard": BOARD, "idList": "l1" }
+            ] }
+        ])))
+        .mount(&server)
+        .await;
+    let o = Env::new(Some(server.uri()))
+        .run(&[
+            "card",
+            "bulk",
+            "move",
+            "--list",
+            "To Do",
+            "--to",
+            "Doing",
+            "--dry-run",
+        ])
+        .await;
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert!(
+        stdout(&o).contains("2 card(s) match; would move to Doing"),
+        "{}",
+        stdout(&o)
+    );
+    assert!(server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .all(|r| r.method.as_str() == "GET"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn summary_counts_per_list() {
+    let server = MockServer::start().await;
+    mount_board(&server).await;
+    Mock::given(method("GET"))
+        .and(path(format!("/boards/{BOARD}/cards/open")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            { "id": "6a0000000000000000000001", "idList": "l1", "idMembers": ["me1"], "due": "2020-01-01T00:00:00.000Z" },
+            { "id": "6a0000000000000000000002", "idList": "l2" }
+        ])))
+        .mount(&server)
+        .await;
+    let o = Env::new(Some(server.uri()))
+        .run(&["summary", "--json"])
+        .await;
+    assert!(o.status.success(), "{}", stderr(&o));
+    let v: Value = serde_json::from_str(&stdout(&o)).unwrap();
+    assert_eq!(v["total"], 2);
+    assert_eq!(v["overdue"], 1);
+    assert_eq!(v["no_due"], 1);
+    assert_eq!(v["per_member"]["@me"], 1);
+    assert_eq!(v["per_list"][1]["cards"], 1);
+}
