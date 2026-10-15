@@ -3,8 +3,8 @@
 //! of them panic. The real fuzzing runs in CI via ClusterFuzzLite.
 
 use trelloc_core::{
-    error::redact, filter::parse_field_expr, ops::label_color, time::created_at,
-    time::parse_when, BoardRef, CardRef,
+    error::redact, filter::parse_field_expr, ops::label_color, time::created_at, time::parse_when,
+    BoardRef, CardRef,
 };
 
 /// xorshift64 — deterministic, no rand dependency.
