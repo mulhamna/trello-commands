@@ -114,7 +114,7 @@ Phase tags refer to `docs/ROADMAP.md`. "Official" = what Trello's official MCP (
 
 ## Not mirrored from the official server
 
-- **Planner** (calendar events, focus time) and **Inbox** — no public REST endpoints for these as far as we know (verify); revisit if Atlassian documents them.
+- **Planner** (calendar events, focus time) and **Inbox** — not in the Trello REST OpenAPI spec (checked Oct 2026); revisit if Atlassian documents them.
 
 ## Client registration
 

@@ -94,7 +94,7 @@ impl TrelloClient {
 - Credentials only in the `Authorization` header (marked sensitive with `HeaderValue::set_sensitive(true)`).
 - `send_with_retry` = limiter permit → send → `observe(headers)` → on 429 backoff loop.
 - Error bodies: JSON `{message|error}` or plain text.
-- Long text params (`desc`, comment `text`) go in a JSON body where the endpoint accepts it, else form-encoded body, never the URL (verify per endpoint during Phase 2/3).
+- Write params (including long `desc` and comment `text`) go in a JSON body, never the URL.
 
 Resource methods in `client/{member,board,list,card,comment,checklist,label,field,attachment,action}.rs`.
 
@@ -128,7 +128,7 @@ Card inputs:
 - `5f2b…` (24 hex) → `Id`
 - `AbCd1234` (8 chars `[A-Za-z0-9]`) → `ShortLink` (usable directly as id)
 - `https://trello.com/c/AbCd1234/42-fix-login` → `ShortLink("AbCd1234")`
-- `roadmap#42`, `Roadmap#42` (board name/alias/shortLink + `#` + number) → `BoardNumber` → resolved via `GET /1/boards/{id}/cards/{idShort}` (verify) or the cached board card list
+- `roadmap#42`, `Roadmap#42` (board name/alias/shortLink + `#` + number) → `BoardNumber` → resolved by reading the board's `id,idShort` card list (no by-number route in the spec)
 - `#42` alone → `BoardNumber` on `default_board`
 
 Board inputs: id, shortLink, `https://trello.com/b/AbCd1234/name`, alias, or name (via resolver).
