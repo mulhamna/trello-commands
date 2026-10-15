@@ -9,14 +9,14 @@ use serde_json::{json, Value};
 
 use crate::{
     client::{
-        board_cards_url, field_clear_body, field_value_body, is_clear, Filter, Query,
+        board_cards_url, field_clear_body, field_value_body, is_clear, Filter, Query, ACTION_LIMIT,
         COMMENT_PAGE_SIZE, MAX_ACTION_PAGE, PAGE_SIZE,
     },
     error::{Result, TrelloError},
     filter::{parse_field_expr, CardFilter, Has, Plan, Range},
     model::{
         Action, Attachment, Board, BoardSnapshot, Card, CheckItem, Checklist, CustomField, Label,
-        Member, Workspace,
+        Member, TrelloList, Workspace,
     },
     resolve::{suggest, BoardId, Resolver},
     time::{is_none, parse_iso, parse_when, to_local_iso, when_iso},
@@ -1380,6 +1380,678 @@ pub async fn attachment_delete(r: &Resolver<'_>, card: &str, attachment_id: &str
     r.client()
         .delete_attachment(&id, attachment_id.trim())
         .await
+}
+
+// ── board & list management ─────────────────────────────────────────────
+
+pub async fn board_create(
+    r: &Resolver<'_>,
+    name: &str,
+    workspace: Option<&str>,
+    from: Option<&str>,
+    default_lists: bool,
+) -> Result<Board> {
+    if name.trim().is_empty() {
+        return Err(TrelloError::Invalid("board name is empty".into()));
+    }
+    let ws = match workspace {
+        Some(w) => Some(r.workspace(w).await?.id),
+        None => None,
+    };
+    let src = match from {
+        Some(b) => Some(r.board(b).await?.id),
+        None => None,
+    };
+    let b = r
+        .client()
+        .create_board(name.trim(), ws.as_deref(), src.as_deref(), default_lists)
+        .await?;
+    r.invalidate_directory();
+    Ok(b)
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct BoardUpdate {
+    pub name: Option<String>,
+    pub desc: Option<String>,
+    /// true archives, false restores.
+    pub closed: Option<bool>,
+}
+
+pub async fn board_update(r: &Resolver<'_>, board: &str, u: &BoardUpdate) -> Result<Board> {
+    let b = r.board(board).await?;
+    let mut body = serde_json::Map::new();
+    if let Some(n) = &u.name {
+        body.insert("name".into(), json!(n.trim()));
+    }
+    if let Some(d) = &u.desc {
+        body.insert("desc".into(), json!(d));
+    }
+    if let Some(c) = u.closed {
+        body.insert("closed".into(), json!(c));
+    }
+    if body.is_empty() {
+        return Err(TrelloError::Invalid(
+            "nothing to update (name, desc or closed)".into(),
+        ));
+    }
+    let out = r.client().update_board(&b.id, Value::Object(body)).await?;
+    r.invalidate_directory();
+    r.invalidate(&b.id);
+    Ok(out)
+}
+
+/// Permanent. Returns the deleted board.
+pub async fn board_delete(r: &Resolver<'_>, board: &str) -> Result<BoardId> {
+    let b = r.board(board).await?;
+    r.client().delete_board(&b.id).await?;
+    r.invalidate_directory();
+    r.invalidate(&b.id);
+    Ok(b)
+}
+
+pub async fn list_create(
+    r: &Resolver<'_>,
+    board: Option<&str>,
+    name: &str,
+    pos: Option<&str>,
+) -> Result<TrelloList> {
+    if name.trim().is_empty() {
+        return Err(TrelloError::Invalid("list name is empty".into()));
+    }
+    let b = r.board_or_default(board).await?;
+    let pos = pos.map(pos_value).transpose()?;
+    let l = r.client().create_list(&b.id, name.trim(), pos).await?;
+    r.invalidate(&b.id);
+    Ok(l)
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct ListUpdate {
+    pub name: Option<String>,
+    /// `top`, `bottom` or a number.
+    pub pos: Option<String>,
+    /// true archives, false restores.
+    pub closed: Option<bool>,
+}
+
+/// Lists are matched among open lists; restoring an archived list needs its id.
+pub async fn list_update(
+    r: &Resolver<'_>,
+    board: Option<&str>,
+    list: &str,
+    u: &ListUpdate,
+) -> Result<TrelloList> {
+    let b = r.board_or_default(board).await?;
+    let id = if crate::board_ref::is_id(list.trim()) {
+        list.trim().to_string()
+    } else {
+        r.list(&b, list).await?.id
+    };
+    let mut body = serde_json::Map::new();
+    if let Some(n) = &u.name {
+        body.insert("name".into(), json!(n.trim()));
+    }
+    if let Some(p) = &u.pos {
+        body.insert("pos".into(), pos_value(p)?);
+    }
+    if let Some(c) = u.closed {
+        body.insert("closed".into(), json!(c));
+    }
+    if body.is_empty() {
+        return Err(TrelloError::Invalid(
+            "nothing to update (name, pos or closed)".into(),
+        ));
+    }
+    let out = r.client().update_list(&id, Value::Object(body)).await?;
+    r.invalidate(&b.id);
+    Ok(out)
+}
+
+/// Move every card of `list` (on `board`) to `to` (`List` or `Board/List`).
+pub async fn list_move_cards(
+    r: &Resolver<'_>,
+    board: Option<&str>,
+    list: &str,
+    to: &str,
+) -> Result<(TrelloList, BoardId, TrelloList)> {
+    let b = r.board_or_default(board).await?;
+    let from = r.list(&b, list).await?;
+    let (tb, tl) = r.list_path(to, Some(&b.id)).await?;
+    r.client().move_all_cards(&from.id, &tb.id, &tl.id).await?;
+    Ok((from, tb, tl))
+}
+
+pub async fn list_archive_cards(
+    r: &Resolver<'_>,
+    board: Option<&str>,
+    list: &str,
+) -> Result<TrelloList> {
+    let b = r.board_or_default(board).await?;
+    let l = r.list(&b, list).await?;
+    r.client().archive_all_cards(&l.id).await?;
+    Ok(l)
+}
+
+// ── bulk & batch ────────────────────────────────────────────────────────
+
+/// Changes applied to every card in a bulk update.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct BulkChanges {
+    /// Move to this list (`List` or `Board/List`).
+    pub list: Option<String>,
+    pub labels_add: Vec<String>,
+    pub labels_remove: Vec<String>,
+    pub members_add: Vec<String>,
+    pub members_remove: Vec<String>,
+    /// Date or `none`.
+    pub due: Option<String>,
+    pub due_complete: Option<bool>,
+    /// true archives every card.
+    pub archive: Option<bool>,
+    /// Add this comment to every card.
+    pub comment: Option<String>,
+}
+
+impl BulkChanges {
+    pub fn is_empty(&self) -> bool {
+        self.list.is_none()
+            && self.labels_add.is_empty()
+            && self.labels_remove.is_empty()
+            && self.members_add.is_empty()
+            && self.members_remove.is_empty()
+            && self.due.is_none()
+            && self.due_complete.is_none()
+            && self.archive.is_none()
+            && self.comment.is_none()
+    }
+
+    /// One line per change, for dry runs and confirmations.
+    pub fn describe(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        if let Some(l) = &self.list {
+            out.push(format!("move to {l}"));
+        }
+        for (verb, v) in [
+            ("add label", &self.labels_add),
+            ("remove label", &self.labels_remove),
+            ("add member", &self.members_add),
+            ("remove member", &self.members_remove),
+        ] {
+            out.extend(v.iter().map(|x| format!("{verb} {x}")));
+        }
+        if let Some(d) = &self.due {
+            out.push(format!("due {d}"));
+        }
+        if let Some(d) = self.due_complete {
+            out.push(if d { "mark done" } else { "mark not done" }.into());
+        }
+        if self.archive == Some(true) {
+            out.push("archive".into());
+        } else if self.archive == Some(false) {
+            out.push("unarchive".into());
+        }
+        if self.comment.is_some() {
+            out.push("add comment".into());
+        }
+        out
+    }
+}
+
+/// Outcome per card, in input order.
+#[derive(Debug, Clone, Serialize)]
+pub struct ItemResult {
+    pub card: String,
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
+impl ItemResult {
+    fn from(card: String, r: Result<Vec<String>>) -> Self {
+        match r {
+            Ok(warnings) => Self {
+                card,
+                ok: true,
+                error: None,
+                warnings,
+            },
+            Err(e) => Self {
+                card,
+                ok: false,
+                error: Some(crate::error::redact(&e.to_string())),
+                warnings: vec![],
+            },
+        }
+    }
+}
+
+/// `{ total, ok, failed, results }`.
+pub fn bulk_summary(results: &[ItemResult]) -> Value {
+    let ok = results.iter().filter(|r| r.ok).count();
+    json!({
+        "total": results.len(),
+        "ok": ok,
+        "failed": results.len() - ok,
+        "results": results,
+    })
+}
+
+async fn apply_changes(r: &Resolver<'_>, card: &str, c: &BulkChanges) -> Result<Vec<String>> {
+    let mut warnings = Vec::new();
+    let update = UpdateInput {
+        due: c.due.clone(),
+        due_complete: c.due_complete,
+        members_add: c.members_add.clone(),
+        members_remove: c.members_remove.clone(),
+        labels_add: c.labels_add.clone(),
+        labels_remove: c.labels_remove.clone(),
+        closed: c.archive,
+        ..Default::default()
+    };
+    let has_update = update.due.is_some()
+        || update.due_complete.is_some()
+        || update.closed.is_some()
+        || update.needs_board();
+    if has_update {
+        warnings.extend(update_card(r, card, &update).await?.warnings);
+    }
+    if let Some(l) = &c.list {
+        warnings.extend(move_card(r, card, l, None).await?.warnings);
+    }
+    if let Some(t) = &c.comment {
+        comment_add(r, card, t).await?;
+    }
+    Ok(warnings)
+}
+
+/// Apply `changes` to each card (any refs) with bounded concurrency through
+/// the shared limiter. `on_done` ticks once per card (progress bars).
+pub async fn bulk_update(
+    r: &Resolver<'_>,
+    cards: Vec<String>,
+    changes: &BulkChanges,
+    on_done: impl Fn() + Send + Sync,
+) -> Result<Vec<ItemResult>> {
+    if changes.is_empty() {
+        return Err(TrelloError::Invalid("no changes given".into()));
+    }
+    let limiter = r.client().limiter().clone();
+    Ok(crate::bulk::run(
+        &limiter,
+        cards,
+        |card| async move {
+            let res = apply_changes(r, &card, changes).await;
+            ItemResult::from(card, res)
+        },
+        on_done,
+    )
+    .await)
+}
+
+/// Create several cards in one list.
+pub async fn bulk_create(
+    r: &Resolver<'_>,
+    list: Option<&str>,
+    cards: Vec<CardInput>,
+    on_done: impl Fn() + Send + Sync,
+) -> Vec<(String, Result<WriteResult>)> {
+    let limiter = r.client().limiter().clone();
+    crate::bulk::run(
+        &limiter,
+        cards,
+        |mut c| async move {
+            if c.list.is_none() {
+                c.list = list.map(str::to_string);
+            }
+            let name = c.name.clone();
+            (name, create_card(r, &c).await)
+        },
+        on_done,
+    )
+    .await
+}
+
+/// One step of `trelloc card batch` / `trello_batch`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "op", rename_all = "snake_case")]
+pub enum BatchOp {
+    Create {
+        #[serde(flatten)]
+        card: CardInput,
+    },
+    Update {
+        card: String,
+        #[serde(flatten)]
+        update: UpdateInput,
+    },
+    Move {
+        card: String,
+        list: String,
+        #[serde(default)]
+        pos: Option<String>,
+    },
+    Comment {
+        card: String,
+        text: String,
+    },
+    Archive {
+        card: String,
+        #[serde(default)]
+        unarchive: bool,
+    },
+    Delete {
+        card: String,
+    },
+}
+
+impl BatchOp {
+    pub fn describe(&self) -> String {
+        match self {
+            Self::Create { card } => format!(
+                "create '{}' in {}",
+                card.name,
+                card.list.as_deref().unwrap_or("the default list")
+            ),
+            Self::Update { card, .. } => format!("update {card}"),
+            Self::Move { card, list, .. } => format!("move {card} to {list}"),
+            Self::Comment { card, .. } => format!("comment on {card}"),
+            Self::Archive { card, unarchive } => {
+                format!(
+                    "{} {card}",
+                    if *unarchive { "unarchive" } else { "archive" }
+                )
+            }
+            Self::Delete { card } => format!("delete {card} (permanent)"),
+        }
+    }
+
+    pub fn is_destructive(&self) -> bool {
+        matches!(self, Self::Delete { .. })
+    }
+}
+
+/// Run one batch step; the output is the card summary (or a deletion note).
+pub async fn run_batch_op(r: &Resolver<'_>, op: &BatchOp) -> Result<Value> {
+    let tz = r.client().timezone().map(str::to_string);
+    let tz = tz.as_deref();
+    let out = |w: WriteResult| {
+        let mut v = card_summary(&w.card, None, tz);
+        v["notes"] = json!(w.notes);
+        v["warnings"] = json!(w.warnings);
+        v
+    };
+    Ok(match op {
+        BatchOp::Create { card } => out(create_card(r, card).await?),
+        BatchOp::Update { card, update } => out(update_card(r, card, update).await?),
+        BatchOp::Move { card, list, pos } => out(move_card(r, card, list, pos.as_deref()).await?),
+        BatchOp::Comment { card, text } => {
+            let a = comment_add(r, card, text).await?;
+            comment_json(&a, tz)
+        }
+        BatchOp::Archive { card, unarchive } => {
+            card_summary(&archive_card(r, card, *unarchive).await?, None, tz)
+        }
+        BatchOp::Delete { card } => json!({ "deleted": delete_card(r, card).await? }),
+    })
+}
+
+// ── reports ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct Standup {
+    pub member: String,
+    pub since: String,
+    /// Cards moved between lists since then: `{ card, from, to, date }`.
+    pub moved: Vec<Value>,
+    /// Cards marked done (due complete) since then.
+    pub completed: Vec<Value>,
+    /// Cards commented on since then.
+    pub commented: Vec<Value>,
+    /// Open cards I'm on (summaries).
+    pub in_progress: Vec<Value>,
+    pub due_soon: Vec<Value>,
+    pub overdue: Vec<Value>,
+}
+
+/// My cards: what moved / got done / got comments since `since`, plus what's
+/// open, due within two days, and overdue. `member` defaults to me.
+pub async fn standup(
+    r: &Resolver<'_>,
+    since: &str,
+    board: Option<&str>,
+    member: Option<&str>,
+) -> Result<Standup> {
+    let tz = r.client().timezone().map(str::to_string);
+    let tz = tz.as_deref();
+    let since_dt = parse_when(since, tz)?;
+    let since_iso = crate::time::to_trello_iso(since_dt);
+    let board_id = match board {
+        Some(b) => Some(r.board(b).await?),
+        None => None,
+    };
+    let (member_id, member_name) = match member {
+        None | Some("me") => {
+            let me = r.me()?;
+            (
+                me.id.clone(),
+                me.username.clone().unwrap_or_else(|| me.id.clone()),
+            )
+        }
+        Some(m) => {
+            let b = match &board_id {
+                Some(b) => b.clone(),
+                None => r.board_or_default(None).await?,
+            };
+            let m = r.member(&b, m).await?;
+            (m.id, m.username)
+        }
+    };
+    let c = r.client();
+    let actions = match &board_id {
+        Some(b) => {
+            let mut a = c
+                .board_actions(
+                    &b.id,
+                    Some("updateCard,commentCard"),
+                    Some(&since_iso),
+                    ACTION_LIMIT,
+                )
+                .await?;
+            a.retain(|x| x.id_member_creator == member_id);
+            a
+        }
+        None => {
+            c.get(
+                &format!("/members/{member_id}/actions"),
+                &Query::new()
+                    .push("filter", "updateCard,commentCard")
+                    .push("since", &since_iso)
+                    .push("limit", ACTION_LIMIT),
+            )
+            .await?
+        }
+    };
+    let mut out = Standup {
+        member: member_name,
+        since: to_local_iso(since_dt, tz),
+        ..Default::default()
+    };
+    let mut seen_done = BTreeSet::new();
+    let mut seen_comment = BTreeSet::new();
+    for a in &actions {
+        let card = json!({ "id": a.card_id(), "name": a.card_name() });
+        let d = &a.data;
+        if a.action_type == "updateCard" && d.get("listAfter").is_some() {
+            out.moved.push(json!({
+                "card": card,
+                "from": d["listBefore"]["name"],
+                "to": d["listAfter"]["name"],
+                "date": a.date,
+            }));
+        } else if a.action_type == "updateCard"
+            && d["card"]["dueComplete"] == json!(true)
+            && d["old"].get("dueComplete").is_some()
+        {
+            if seen_done.insert(a.card_id().unwrap_or_default().to_string()) {
+                out.completed.push(card);
+            }
+        } else if a.action_type == "commentCard"
+            && seen_comment.insert(a.card_id().unwrap_or_default().to_string())
+        {
+            out.commented.push(card);
+        }
+    }
+    let input = SearchInput {
+        boards: board_id.iter().map(|b| b.id.clone()).collect(),
+        members: if member.is_some_and(|m| m != "me") {
+            vec![member_id.clone()]
+        } else {
+            vec![]
+        },
+        mine: member.is_none_or(|m| m == "me"),
+        ..Default::default()
+    };
+    let res = search_cards(r, &input).await?;
+    let now = Utc::now();
+    let soon = now + chrono::Duration::days(2);
+    for card in &res.cards {
+        let s = card_summary(card, res.snapshot(&card.id_board), tz);
+        let due = card.due.as_deref().and_then(parse_iso);
+        if !card.due_complete {
+            match due {
+                Some(d) if d < now => out.overdue.push(s.clone()),
+                Some(d) if d < soon => out.due_soon.push(s.clone()),
+                _ => {}
+            }
+        }
+        if !card.due_complete {
+            out.in_progress.push(s);
+        }
+    }
+    Ok(out)
+}
+
+/// Card counts for a board: per list, per member, overdue, no due date, done.
+pub async fn board_report(r: &Resolver<'_>, board: Option<&str>) -> Result<Value> {
+    let b = r.board_or_default(board).await?;
+    let snap = r.snapshot(&b).await?;
+    let cards = r.client().board_cards(&b.id, Filter::Open).await?;
+    let now = Utc::now();
+    let mut lists: Vec<_> = snap.lists.clone();
+    lists.sort_by(|a, b| {
+        a.pos
+            .partial_cmp(&b.pos)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let mut per_member: BTreeMap<String, usize> = BTreeMap::new();
+    for c in &cards {
+        if c.id_members.is_empty() {
+            *per_member.entry("(unassigned)".into()).or_default() += 1;
+        }
+        for m in &c.id_members {
+            let name = snap
+                .member(m)
+                .map(|x| format!("@{}", x.username))
+                .unwrap_or_else(|| m.clone());
+            *per_member.entry(name).or_default() += 1;
+        }
+    }
+    let overdue = cards
+        .iter()
+        .filter(|c| {
+            !c.due_complete
+                && c.due
+                    .as_deref()
+                    .and_then(parse_iso)
+                    .is_some_and(|d| d < now)
+        })
+        .count();
+    Ok(json!({
+        "board": { "id": b.id, "name": snap.name },
+        "total": cards.len(),
+        "per_list": lists.iter().map(|l| json!({
+            "list": l.name,
+            "cards": cards.iter().filter(|c| c.id_list == l.id).count(),
+        })).collect::<Vec<_>>(),
+        "per_member": per_member,
+        "overdue": overdue,
+        "no_due": cards.iter().filter(|c| c.due.is_none()).count(),
+        "done": cards.iter().filter(|c| c.due_complete).count(),
+    }))
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct ActivityInput {
+    pub board: Option<String>,
+    pub card: Option<String>,
+    pub since: Option<String>,
+    /// Only actions by this member.
+    pub member: Option<String>,
+    pub limit: Option<usize>,
+}
+
+/// Activity feed of a card, a board, or (neither given) my own actions.
+pub async fn activity(r: &Resolver<'_>, input: &ActivityInput) -> Result<Vec<Value>> {
+    let tz = r.client().timezone().map(str::to_string);
+    let tz = tz.as_deref();
+    let since = input
+        .since
+        .as_deref()
+        .map(|s| when_iso(s, tz))
+        .transpose()?;
+    let limit = input.limit.unwrap_or(50).clamp(1, ACTION_LIMIT);
+    let c = r.client();
+    let (mut actions, board) = if let Some(card) = &input.card {
+        let id = r.card(card).await?;
+        (c.card_actions(&id, None, 0).await?, None)
+    } else if let Some(b) = &input.board {
+        let b = r.board(b).await?;
+        (
+            c.board_actions(&b.id, None, since.as_deref(), limit)
+                .await?,
+            Some(b),
+        )
+    } else {
+        (c.my_actions(None, since.as_deref(), limit).await?, None)
+    };
+    if let Some(m) = &input.member {
+        let id = if m.eq_ignore_ascii_case("me") {
+            r.me()?.id.clone()
+        } else {
+            let b = match board {
+                Some(b) => b,
+                None => r.board_or_default(None).await?,
+            };
+            r.member(&b, m).await?.id
+        };
+        actions.retain(|a| a.id_member_creator == id);
+    }
+    if let Some(s) = since.as_deref().and_then(parse_iso) {
+        actions.retain(|a| parse_iso(&a.date).is_none_or(|d| d >= s));
+    }
+    actions.truncate(limit);
+    Ok(actions
+        .iter()
+        .map(|a| {
+            json!({
+                "id": a.id,
+                "type": a.action_type,
+                "date": parse_iso(&a.date).map(|d| to_local_iso(d, tz)),
+                "by": a.author(),
+                "card": a.card_name(),
+                "text": a.text(),
+                "list_before": a.data.get("listBefore").and_then(|l| l.get("name")),
+                "list_after": a.data.get("listAfter").and_then(|l| l.get("name")),
+            })
+        })
+        .collect())
 }
 
 #[cfg(test)]
