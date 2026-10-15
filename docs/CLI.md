@@ -155,9 +155,9 @@ trelloc attachment delete <card> <attachment-id> [--yes]
 
 ```
 trelloc card bulk move    [filters…] --to <list> [--dry-run] [--yes]
-trelloc card bulk update  [filters…] [--add-label …] [--remove-label …] [--add-member …] [--due <d>] [--done] [--dry-run] [--yes]
+trelloc card bulk update  [filters…] [--add-label …] [--remove-label …] [--add-member …] [--remove-member …] [--due <d>] [--mark-done|--mark-not-done] [--dry-run] [--yes]   # --done/--not-done are filters
 trelloc card bulk archive [filters…] [--dry-run] [--yes]
-trelloc card bulk comment [filters…] --text <t> [--dry-run] [--yes]
+trelloc card bulk comment [filters…] --message <t> [--dry-run] [--yes]   # --text is the name/desc filter
 trelloc card batch --file ops.json [--dry-run]           # [{ "op": "create"|"update"|"move"|"comment"|"archive"|"delete", … }]
 ```
 Matched-count preview, confirmation above 1 card, bounded concurrency through the shared limiter, progress bar, per-card result summary.
