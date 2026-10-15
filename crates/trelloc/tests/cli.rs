@@ -386,3 +386,44 @@ async fn summary_counts_per_list() {
     assert_eq!(v["per_member"]["@me"], 1);
     assert_eq!(v["per_list"][1]["cards"], 1);
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mcp_install_claude_code_writes_no_credentials() {
+    let server = MockServer::start().await;
+    let env = Env::new(Some(server.uri()));
+    let home = env.dir.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let mut c = env.cmd(&[
+        "--profile",
+        "default",
+        "mcp",
+        "install",
+        "--client",
+        "claude-code",
+        "--command",
+        env!("CARGO_BIN_EXE_trelloc"),
+    ]);
+    c.env("HOME", &home).env("USERPROFILE", &home);
+    let o = tokio::task::spawn_blocking(move || c.output().unwrap())
+        .await
+        .unwrap();
+    assert!(o.status.success(), "{}", stderr(&o));
+    let written = std::fs::read_to_string(home.join(".claude.json")).unwrap();
+    let v: Value = serde_json::from_str(&written).unwrap();
+    let entry = &v["mcpServers"]["trelloc"];
+    assert_eq!(entry["args"], json!(["mcp", "serve"]));
+    assert_eq!(entry["env"]["TRELLO_PROFILE"], "default");
+    for secret in ["clikey", "clitoken", "TRELLO_TOKEN", "TRELLO_API_KEY"] {
+        assert!(!written.contains(secret), "{secret} leaked into {written}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mcp_install_generic_json_prints_snippet() {
+    let o = Env::new(None)
+        .run(&["mcp", "install", "--client", "generic-json"])
+        .await;
+    assert!(o.status.success(), "{}", stderr(&o));
+    let v: Value = serde_json::from_str(&stdout(&o)).unwrap();
+    assert_eq!(v["mcpServers"]["trelloc"]["args"], json!(["mcp", "serve"]));
+}
