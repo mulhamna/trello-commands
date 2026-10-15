@@ -28,5 +28,6 @@ url = { workspace = true }
 
 [dev-dependencies]
 serial_test = { workspace = true }
+tokio = { workspace = true, features = ["test-util"] }
 tempfile = { workspace = true }
 wiremock = { workspace = true }
