@@ -238,3 +238,184 @@ pub struct CardConfirmArgs {
     /// Must be true: deletion is permanent.
     pub confirm: Option<bool>,
 }
+
+// ── collaboration ───────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct CardArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    /// Card id, shortLink, card URL, or "board#42".
+    pub card: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct CommentListArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub card: String,
+    /// How many of the latest comments (default 50).
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct CommentAddArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub card: String,
+    /// Markdown; "@username" mentions notify that member.
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct CommentEditArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub card: String,
+    /// Comment (action) id from trello_comment_list.
+    pub comment_id: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct CommentDeleteArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub comment_id: String,
+    /// Must be true.
+    pub confirm: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct ChecklistAddArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub card: String,
+    pub name: String,
+    pub items: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct ChecklistItemAddArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub card: String,
+    /// Checklist name or id on the card.
+    pub checklist: String,
+    pub text: String,
+    pub due: Option<String>,
+    /// Member to assign: "me", username or id.
+    pub member: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct ChecklistItemUpdateArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub card: String,
+    /// Item id, exact text, or a unique part of the text.
+    pub item: String,
+    pub checked: Option<bool>,
+    /// New text.
+    pub text: Option<String>,
+    /// Human date, or "none" to clear.
+    pub due: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct ChecklistItemDeleteArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub card: String,
+    pub item: String,
+    /// Must be true.
+    pub confirm: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct ChecklistDeleteArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub card: String,
+    /// Checklist name or id.
+    pub checklist: String,
+    /// Must be true.
+    pub confirm: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct LabelCreateArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    /// Board (default: the profile's default board).
+    pub board: Option<String>,
+    pub name: String,
+    /// green, yellow, orange, red, purple, blue, sky, lime, pink, black (optionally _dark/_light), or "none".
+    pub color: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct LabelUpdateArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub board: Option<String>,
+    /// Label name, color or id.
+    pub label: String,
+    pub name: Option<String>,
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct LabelDeleteArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub board: Option<String>,
+    pub label: String,
+    /// Must be true: removes the label from every card.
+    pub confirm: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct FieldSetArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub card: String,
+    /// Custom field name or id.
+    pub field: String,
+    /// Dropdown option name, number, date ("fri", ISO), true/false, or text.
+    pub value: Value,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct FieldClearArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub card: String,
+    pub field: String,
+    /// Must be true.
+    pub confirm: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct AttachmentAddArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub card: String,
+    /// Local file to upload (absolute path on the machine running the server).
+    pub path: Option<String>,
+    /// Or an http(s) URL to attach.
+    pub url: Option<String>,
+    pub name: Option<String>,
+    /// Use as the card cover.
+    pub set_cover: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct AttachmentDeleteArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    pub card: String,
+    pub attachment_id: String,
+    /// Must be true.
+    pub confirm: Option<bool>,
+}

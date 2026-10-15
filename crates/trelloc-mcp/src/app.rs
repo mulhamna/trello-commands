@@ -468,3 +468,190 @@ pub async fn card_delete(a: CardConfirmArgs) -> AppResult<Value> {
     let id = ops::delete_card(&ctx.resolver(), &a.card).await?;
     Ok(json!({ "deleted": true, "id": id }))
 }
+
+// ── collaboration ───────────────────────────────────────────────────────
+
+pub async fn comment_list(a: CommentListArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    let list = ops::comment_list(&ctx.resolver(), &a.card, a.limit).await?;
+    Ok(json!(list
+        .iter()
+        .map(|c| ops::comment_json(c, ctx.tz()))
+        .collect::<Vec<_>>()))
+}
+
+pub async fn comment_add(a: CommentAddArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    let c = ops::comment_add(&ctx.resolver(), &a.card, &a.text).await?;
+    Ok(ops::comment_json(&c, ctx.tz()))
+}
+
+pub async fn comment_edit(a: CommentEditArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    let c = ops::comment_edit(&ctx.resolver(), &a.card, &a.comment_id, &a.text).await?;
+    Ok(ops::comment_json(&c, ctx.tz()))
+}
+
+pub async fn comment_delete(a: CommentDeleteArgs) -> AppResult<Value> {
+    require_confirm(a.confirm)?;
+    let ctx = Ctx::load(&a.account)?;
+    ctx.client.delete_comment(a.comment_id.trim()).await?;
+    Ok(json!({ "deleted": true, "comment_id": a.comment_id }))
+}
+
+pub async fn checklist_list(a: CardArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    let lists = ops::checklist_list(&ctx.resolver(), &a.card).await?;
+    Ok(json!(lists
+        .iter()
+        .map(ops::checklist_json)
+        .collect::<Vec<_>>()))
+}
+
+pub async fn checklist_add(a: ChecklistAddArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    let r = ctx.resolver();
+    let id = r.card(&a.card).await?;
+    let cl = ops::add_checklist(&r, &id, &a.name, &strs(&a.items)).await?;
+    Ok(ops::checklist_json(&cl))
+}
+
+pub async fn checklist_item_add(a: ChecklistItemAddArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    let item = ops::checklist_item_add(
+        &ctx.resolver(),
+        &a.card,
+        &a.checklist,
+        &a.text,
+        a.due.as_deref(),
+        a.member.as_deref(),
+    )
+    .await?;
+    Ok(json!(item))
+}
+
+pub async fn checklist_item_update(a: ChecklistItemUpdateArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    let item = ops::checklist_item_update(
+        &ctx.resolver(),
+        &a.card,
+        &a.item,
+        &ops::ItemUpdate {
+            checked: a.checked,
+            text: a.text.clone(),
+            due: a.due.clone(),
+        },
+    )
+    .await?;
+    Ok(json!(item))
+}
+
+pub async fn checklist_item_delete(a: ChecklistItemDeleteArgs) -> AppResult<Value> {
+    require_confirm(a.confirm)?;
+    let ctx = Ctx::load(&a.account)?;
+    let item = ops::checklist_item_delete(&ctx.resolver(), &a.card, &a.item).await?;
+    Ok(json!({ "deleted": true, "item": item.name, "id": item.id }))
+}
+
+pub async fn checklist_delete(a: ChecklistDeleteArgs) -> AppResult<Value> {
+    require_confirm(a.confirm)?;
+    let ctx = Ctx::load(&a.account)?;
+    let cl = ops::checklist_delete(&ctx.resolver(), &a.card, &a.checklist).await?;
+    Ok(json!({ "deleted": true, "checklist": cl.name, "id": cl.id }))
+}
+
+pub async fn label_list(a: BoardArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    Ok(json!(
+        ops::label_list(&ctx.resolver(), a.board.as_deref()).await?
+    ))
+}
+
+pub async fn label_create(a: LabelCreateArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    Ok(json!(
+        ops::label_create(&ctx.resolver(), a.board.as_deref(), &a.name, &a.color).await?
+    ))
+}
+
+pub async fn label_update(a: LabelUpdateArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    Ok(json!(
+        ops::label_update(
+            &ctx.resolver(),
+            a.board.as_deref(),
+            &a.label,
+            a.name.as_deref(),
+            a.color.as_deref()
+        )
+        .await?
+    ))
+}
+
+pub async fn label_delete(a: LabelDeleteArgs) -> AppResult<Value> {
+    require_confirm(a.confirm)?;
+    let ctx = Ctx::load(&a.account)?;
+    let l = ops::label_delete(&ctx.resolver(), a.board.as_deref(), &a.label).await?;
+    Ok(json!({ "deleted": true, "label": l.display(), "id": l.id }))
+}
+
+pub async fn field_list(a: BoardArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    let fields = ops::field_list(&ctx.resolver(), a.board.as_deref()).await?;
+    Ok(json!(fields
+        .iter()
+        .map(|f| json!({
+            "id": f.id, "name": f.name, "type": f.field_type,
+            "options": f.options.iter().map(|o| json!({ "id": o.id, "name": o.value.text })).collect::<Vec<_>>(),
+        }))
+        .collect::<Vec<_>>()))
+}
+
+pub async fn field_set(a: FieldSetArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    let note = ops::set_card_field(
+        &ctx.resolver(),
+        &a.card,
+        &a.field,
+        &value_to_input(&a.value),
+    )
+    .await?;
+    Ok(json!({ "result": note }))
+}
+
+pub async fn field_clear(a: FieldClearArgs) -> AppResult<Value> {
+    require_confirm(a.confirm)?;
+    let ctx = Ctx::load(&a.account)?;
+    let note = ops::clear_card_field(&ctx.resolver(), &a.card, &a.field).await?;
+    Ok(json!({ "result": note }))
+}
+
+pub async fn attachment_list(a: CardArgs) -> AppResult<Value> {
+    let ctx = Ctx::load(&a.account)?;
+    Ok(json!(ops::attachment_list(&ctx.resolver(), &a.card).await?))
+}
+
+pub async fn attachment_add(a: AttachmentAddArgs) -> AppResult<Value> {
+    let target = match (&a.path, &a.url) {
+        (Some(p), None) => p.clone(),
+        (None, Some(u)) => u.clone(),
+        _ => return Err(AppError::validation("pass exactly one of `path` or `url`")),
+    };
+    let ctx = Ctx::load(&a.account)?;
+    let att = ops::attachment_add(
+        &ctx.resolver(),
+        &a.card,
+        &target,
+        a.name.as_deref(),
+        a.set_cover.unwrap_or(false),
+    )
+    .await?;
+    Ok(json!(att))
+}
+
+pub async fn attachment_delete(a: AttachmentDeleteArgs) -> AppResult<Value> {
+    require_confirm(a.confirm)?;
+    let ctx = Ctx::load(&a.account)?;
+    ops::attachment_delete(&ctx.resolver(), &a.card, &a.attachment_id).await?;
+    Ok(json!({ "deleted": true, "attachment_id": a.attachment_id }))
+}

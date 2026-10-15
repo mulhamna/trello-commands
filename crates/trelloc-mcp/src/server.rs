@@ -245,6 +245,228 @@ impl TrelloMcpServer {
         respond(app::card_delete(args).await)
     }
 
+    // ── collaboration ───────────────────────────────────────────────────
+
+    #[tool(
+        name = "trello_comment_list",
+        description = "Latest comments on a card, newest first, with ids for editing."
+    )]
+    pub async fn trello_comment_list(
+        &self,
+        Parameters(args): Parameters<CommentListArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::comment_list(args).await)
+    }
+
+    #[tool(
+        name = "trello_comment_add",
+        description = "Add a Markdown comment to a card. \"@username\" mentions notify that member."
+    )]
+    pub async fn trello_comment_add(
+        &self,
+        Parameters(args): Parameters<CommentAddArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::comment_add(args).await)
+    }
+
+    #[tool(
+        name = "trello_comment_edit",
+        description = "Replace the text of one of your comments (comment_id from trello_comment_list)."
+    )]
+    pub async fn trello_comment_edit(
+        &self,
+        Parameters(args): Parameters<CommentEditArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::comment_edit(args).await)
+    }
+
+    #[tool(
+        name = "trello_comment_delete",
+        description = "Delete a comment. Requires confirm=true."
+    )]
+    pub async fn trello_comment_delete(
+        &self,
+        Parameters(args): Parameters<CommentDeleteArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::comment_delete(args).await)
+    }
+
+    #[tool(
+        name = "trello_checklist_list",
+        description = "Checklists on a card with done/total progress and item ids."
+    )]
+    pub async fn trello_checklist_list(
+        &self,
+        Parameters(args): Parameters<CardArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::checklist_list(args).await)
+    }
+
+    #[tool(
+        name = "trello_checklist_add",
+        description = "Add a checklist to a card, optionally with items."
+    )]
+    pub async fn trello_checklist_add(
+        &self,
+        Parameters(args): Parameters<ChecklistAddArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::checklist_add(args).await)
+    }
+
+    #[tool(
+        name = "trello_checklist_item_add",
+        description = "Add an item to a checklist (by checklist name or id), optionally with a due date and member."
+    )]
+    pub async fn trello_checklist_item_add(
+        &self,
+        Parameters(args): Parameters<ChecklistItemAddArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::checklist_item_add(args).await)
+    }
+
+    #[tool(
+        name = "trello_checklist_item_update",
+        description = "Check/uncheck, rename or re-date a checklist item. `item` may be the id, the exact text, or a unique part of it."
+    )]
+    pub async fn trello_checklist_item_update(
+        &self,
+        Parameters(args): Parameters<ChecklistItemUpdateArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::checklist_item_update(args).await)
+    }
+
+    #[tool(
+        name = "trello_checklist_item_delete",
+        description = "Delete a checklist item. Requires confirm=true."
+    )]
+    pub async fn trello_checklist_item_delete(
+        &self,
+        Parameters(args): Parameters<ChecklistItemDeleteArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::checklist_item_delete(args).await)
+    }
+
+    #[tool(
+        name = "trello_checklist_delete",
+        description = "Delete a whole checklist from a card. Requires confirm=true."
+    )]
+    pub async fn trello_checklist_delete(
+        &self,
+        Parameters(args): Parameters<ChecklistDeleteArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::checklist_delete(args).await)
+    }
+
+    #[tool(
+        name = "trello_label_list",
+        description = "Labels on a board (name, color, id). Labels are board-scoped."
+    )]
+    pub async fn trello_label_list(
+        &self,
+        Parameters(args): Parameters<BoardArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::label_list(args).await)
+    }
+
+    #[tool(
+        name = "trello_label_create",
+        description = "Create a label on a board."
+    )]
+    pub async fn trello_label_create(
+        &self,
+        Parameters(args): Parameters<LabelCreateArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::label_create(args).await)
+    }
+
+    #[tool(
+        name = "trello_label_update",
+        description = "Rename or recolor a board label."
+    )]
+    pub async fn trello_label_update(
+        &self,
+        Parameters(args): Parameters<LabelUpdateArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::label_update(args).await)
+    }
+
+    #[tool(
+        name = "trello_label_delete",
+        description = "Delete a label from the board and every card using it. Requires confirm=true."
+    )]
+    pub async fn trello_label_delete(
+        &self,
+        Parameters(args): Parameters<LabelDeleteArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::label_delete(args).await)
+    }
+
+    #[tool(
+        name = "trello_field_list",
+        description = "Custom field definitions on a board with dropdown options. Returns `unavailable` when the Custom Fields Power-Up is off."
+    )]
+    pub async fn trello_field_list(
+        &self,
+        Parameters(args): Parameters<BoardArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::field_list(args).await)
+    }
+
+    #[tool(
+        name = "trello_field_set",
+        description = "Set a custom field on a card by field name: dropdown option name, number, date, true/false or text."
+    )]
+    pub async fn trello_field_set(
+        &self,
+        Parameters(args): Parameters<FieldSetArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::field_set(args).await)
+    }
+
+    #[tool(
+        name = "trello_field_clear",
+        description = "Clear a custom field value on a card. Requires confirm=true."
+    )]
+    pub async fn trello_field_clear(
+        &self,
+        Parameters(args): Parameters<FieldClearArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::field_clear(args).await)
+    }
+
+    #[tool(
+        name = "trello_attachment_list",
+        description = "Attachments on a card (name, url, size)."
+    )]
+    pub async fn trello_attachment_list(
+        &self,
+        Parameters(args): Parameters<CardArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::attachment_list(args).await)
+    }
+
+    #[tool(
+        name = "trello_attachment_add",
+        description = "Attach a local file (`path`, on the machine running the server) or a URL (`url`) to a card."
+    )]
+    pub async fn trello_attachment_add(
+        &self,
+        Parameters(args): Parameters<AttachmentAddArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::attachment_add(args).await)
+    }
+
+    #[tool(
+        name = "trello_attachment_delete",
+        description = "Delete an attachment from a card. Requires confirm=true."
+    )]
+    pub async fn trello_attachment_delete(
+        &self,
+        Parameters(args): Parameters<AttachmentDeleteArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::attachment_delete(args).await)
+    }
+
     // ── escape hatch ────────────────────────────────────────────────────
 
     #[tool(
