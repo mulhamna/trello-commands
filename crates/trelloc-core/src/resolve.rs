@@ -16,6 +16,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{
     board_ref::{is_id, BoardRef},
+    card_ref::CardRef,
     client::{Filter, TrelloClient},
     config::{CachedMember, TrelloConfig},
     error::{Result, TrelloError},
@@ -144,6 +145,7 @@ pub struct Resolver<'a> {
     aliases: BTreeMap<String, String>,
     workspace: Option<String>,
     default_board: Option<String>,
+    default_list: Option<String>,
     member: Option<CachedMember>,
     refresh: bool,
     /// Loaded data and whether this resolver fetched it from the network
@@ -194,6 +196,7 @@ impl<'a> Resolver<'a> {
             aliases: cfg.aliases.clone(),
             workspace: cfg.workspace.clone(),
             default_board: cfg.default_board.clone(),
+            default_list: cfg.default_list.clone(),
             member: cfg.member.clone(),
             refresh: false,
             directory: Mutex::new(None),
@@ -225,6 +228,10 @@ impl<'a> Resolver<'a> {
 
     pub fn default_board(&self) -> Option<&str> {
         self.default_board.as_deref()
+    }
+
+    pub fn default_list(&self) -> Option<&str> {
+        self.default_list.as_deref()
     }
 
     /// The cached member behind `me` (never calls the API).
@@ -664,5 +671,27 @@ impl<'a> Resolver<'a> {
             let names: Vec<String> = snap.custom_fields.iter().map(|f| f.name.clone()).collect();
             not_found("custom field", input, &names)
         })
+    }
+
+    // ── cards ───────────────────────────────────────────────────────────
+
+    /// id | shortLink | card URL | `board#42` | `#42` (default board) → an id
+    /// usable in `/cards/{id}`. Only `#n` forms cost a request.
+    pub async fn card(&self, input: &str) -> Result<String> {
+        match CardRef::parse(input)? {
+            CardRef::Id(s) | CardRef::ShortLink(s) => Ok(s),
+            CardRef::BoardNumber { board, number } => {
+                let b = self.board_or_default(board.as_deref()).await?;
+                self.client
+                    .card_numbers(&b.id)
+                    .await?
+                    .into_iter()
+                    .find(|(_, n)| *n == number)
+                    .map(|(id, _)| id)
+                    .ok_or_else(|| {
+                        TrelloError::NotFound(format!("card #{number} on board '{}'", b.name))
+                    })
+            }
+        }
     }
 }

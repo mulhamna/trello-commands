@@ -1,10 +1,21 @@
 //! HTTP plumbing: auth header, pacing, retry on 429, error-body parsing.
 //! Resource methods live in sibling modules as `impl TrelloClient` blocks.
 
+mod action;
+mod attachment;
 mod board;
+mod card;
+mod checklist;
+mod comment;
+mod field;
+mod label;
 mod member;
 
+pub use action::ACTION_LIMIT;
 pub use board::Filter;
+pub use card::{board_cards_url, MAX_PAGES, PAGE_SIZE};
+pub use comment::{COMMENT_PAGE_SIZE, MAX_ACTION_PAGE};
+pub use field::{field_clear_body, field_value_body, is_clear};
 
 use std::sync::Arc;
 
@@ -64,7 +75,6 @@ impl Query {
     }
 }
 
-#[allow(dead_code)] // TEMP: writers arrive with the card client
 #[derive(Debug, Clone)]
 pub(crate) enum Body {
     Json(Value),
@@ -140,7 +150,6 @@ impl TrelloClient {
         self.call(Method::GET, path, q, None).await
     }
 
-    #[allow(dead_code)] // TEMP: writers arrive with the card client
     /// Write params go in a JSON body, never the URL: long descriptions and
     /// comments would hit URL length limits and end up in logs.
     pub(crate) async fn post<T: DeserializeOwned>(&self, path: &str, body: Value) -> Result<T> {
@@ -148,13 +157,11 @@ impl TrelloClient {
             .await
     }
 
-    #[allow(dead_code)] // TEMP
     pub(crate) async fn put<T: DeserializeOwned>(&self, path: &str, body: Value) -> Result<T> {
         self.call(Method::PUT, path, &Query::new(), Some(Body::Json(body)))
             .await
     }
 
-    #[allow(dead_code)] // TEMP
     pub(crate) async fn delete(&self, path: &str) -> Result<Value> {
         self.call(Method::DELETE, path, &Query::new(), None).await
     }
