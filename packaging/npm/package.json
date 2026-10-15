@@ -1,0 +1,36 @@
+{
+  "name": "@mulham28/trelloc",
+  "version": "0.1.0",
+  "description": "Unofficial Trello CLI and MCP server in one binary, installed from GitHub Releases",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mulhamna/trello-commands.git"
+  },
+  "homepage": "https://github.com/mulhamna/trello-commands",
+  "bugs": {
+    "url": "https://github.com/mulhamna/trello-commands/issues"
+  },
+  "keywords": [
+    "trello",
+    "cli",
+    "mcp",
+    "mcp-server",
+    "productivity"
+  ],
+  "bin": {
+    "trelloc": "bin/trelloc.js"
+  },
+  "files": [
+    "bin",
+    "lib/install.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "postinstall": "node ./lib/install.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
