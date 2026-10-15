@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 pub mod board_ref;
+pub mod bulk;
 pub mod card_ref;
 pub mod client;
 pub mod config;

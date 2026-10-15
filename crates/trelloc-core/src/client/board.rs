@@ -1,3 +1,5 @@
+use serde_json::{json, Value};
+
 use super::{Query, TrelloClient};
 use crate::{
     error::Result,
@@ -98,4 +100,69 @@ pub(crate) fn snapshot_query() -> Query {
         .push("members", "all")
         .push("member_fields", "fullName,username,initials")
         .push("customFields", "true")
+}
+
+impl TrelloClient {
+    /// `POST /1/boards/`. `source` copies another board; `default_lists`
+    /// adds To Do / Doing / Done.
+    pub async fn create_board(
+        &self,
+        name: &str,
+        workspace_id: Option<&str>,
+        source: Option<&str>,
+        default_lists: bool,
+    ) -> Result<Board> {
+        let mut body = json!({ "name": name, "defaultLists": default_lists });
+        if let Some(w) = workspace_id {
+            body["idOrganization"] = json!(w);
+        }
+        if let Some(s) = source {
+            body["idBoardSource"] = json!(s);
+            body["keepFromSource"] = json!("cards");
+        }
+        self.post("/boards/", body).await
+    }
+
+    /// `body`: any of `name`, `desc`, `closed`.
+    pub async fn update_board(&self, id: &str, body: Value) -> Result<Board> {
+        self.put(&format!("/boards/{id}"), body).await
+    }
+
+    /// Permanent, with every list and card on it.
+    pub async fn delete_board(&self, id: &str) -> Result<()> {
+        self.delete(&format!("/boards/{id}")).await.map(drop)
+    }
+
+    pub async fn create_list(
+        &self,
+        board_id: &str,
+        name: &str,
+        pos: Option<Value>,
+    ) -> Result<TrelloList> {
+        let mut body = json!({ "name": name });
+        if let Some(p) = pos {
+            body["pos"] = p;
+        }
+        self.post(&format!("/boards/{board_id}/lists"), body).await
+    }
+
+    /// `body`: any of `name`, `pos`, `closed`.
+    pub async fn update_list(&self, id: &str, body: Value) -> Result<TrelloList> {
+        self.put(&format!("/lists/{id}"), body).await
+    }
+
+    pub async fn move_all_cards(&self, list_id: &str, board_id: &str, to_list: &str) -> Result<()> {
+        self.post::<Value>(
+            &format!("/lists/{list_id}/moveAllCards"),
+            json!({ "idBoard": board_id, "idList": to_list }),
+        )
+        .await
+        .map(drop)
+    }
+
+    pub async fn archive_all_cards(&self, list_id: &str) -> Result<()> {
+        self.post::<Value>(&format!("/lists/{list_id}/archiveAllCards"), json!({}))
+            .await
+            .map(drop)
+    }
 }
