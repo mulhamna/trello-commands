@@ -23,7 +23,7 @@ name: Release
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Existing tag to (re)release, e.g. v0.1.0'
+        description: 'Existing tag to (re)release, e.g. v1.0.0'
         required: true
         type: string
       dry_run:

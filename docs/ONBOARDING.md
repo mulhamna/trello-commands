@@ -45,7 +45,7 @@ plain-text error), verify (verify) endpoints, commit per task, smoke test green,
 - P3: comment, checklist with items, label create/apply, set a dropdown custom field by option name, upload a file.
 - P4: `card bulk move --dry-run`, then for real on the sandbox; `trelloc standup`.
 - P5: `trelloc mcp install --client claude-code`, restart, tools appear.
-- P6: `release.yml` dry run, then the real v0.1.0 / v1.0.0.
+- P6: `release.yml` dry run, then the real v1.0.0.
 
 ## 5. Keep docs honest
 

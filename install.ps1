@@ -4,7 +4,7 @@
 #   irm https://raw.githubusercontent.com/mulhamna/trello-commands/main/install.ps1 | iex
 #
 # Or with options:
-#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/mulhamna/trello-commands/main/install.ps1))) -Version v0.1.0
+#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/mulhamna/trello-commands/main/install.ps1))) -Version v1.0.0
 #
 # Downloads the release zip for your architecture, verifies it against the
 # release's checksums.txt, installs trelloc.exe and adds it to the user PATH.

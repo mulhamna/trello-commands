@@ -14,7 +14,7 @@ Commit per task with Conventional Commits (`feat(core): …`, `feat(cli): …`, 
 
 ## Phase 0 — Scaffold
 
-- [x] Cargo workspace: `crates/trelloc-core` (lib), `crates/trelloc-mcp` (lib, no binary), `crates/trelloc` (the only binary). Edition 2021, `license = "MIT"`, version `0.1.0` in `[workspace.package]` with `# x-release-please-version` markers, shared deps in `[workspace.dependencies]` (drop `chrono-tz` only if unused).
+- [x] Cargo workspace: `crates/trelloc-core` (lib), `crates/trelloc-mcp` (lib, no binary), `crates/trelloc` (the only binary). Edition 2021, `license = "MIT"`, version `0.0.0` in `[workspace.package]` (release-please sets the real one) with `# x-release-please-version` markers, shared deps in `[workspace.dependencies]` (drop `chrono-tz` only if unused).
 - [x] `LICENSE`, `.gitignore`, `README.md`, `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`.
 - [x] CI: `ci.yml`, `security.yml`, `deny.toml`, `dependabot.yml`, templates.
 - [x] `trelloc --version` runs; `trelloc mcp serve` answers `initialize` over stdio with an empty tool list.

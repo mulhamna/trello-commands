@@ -16,7 +16,7 @@ body:
     attributes:
       label: Version
       description: Output of `trelloc --version`.
-      placeholder: "trelloc 0.1.0"
+      placeholder: "trelloc 1.0.0"
     validations:
       required: true
 

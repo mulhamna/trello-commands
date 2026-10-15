@@ -5,7 +5,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/mulhamna/trello-commands/main/install.sh | bash
 #
 # Options (env vars):
-#   TRELLOC_VERSION=v0.1.0      install a specific release (default: latest)
+#   TRELLOC_VERSION=v1.0.0      install a specific release (default: latest)
 #   TRELLOC_INSTALL_DIR=/path   install directory (default: ~/.local/bin)
 #
 # Downloads the release archive for your OS/arch, verifies it against the

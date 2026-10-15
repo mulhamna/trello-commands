@@ -25,12 +25,12 @@ The script detects your OS and architecture, downloads the matching archive from
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `TRELLOC_VERSION` | latest release | Install a specific version, e.g. `v0.1.0` |
+| `TRELLOC_VERSION` | latest release | Install a specific version, e.g. `v1.0.0` |
 | `TRELLOC_INSTALL_DIR` | `~/.local/bin` | Install directory |
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/mulhamna/trello-commands/main/install.sh \
-  | TRELLOC_VERSION=v0.1.0 TRELLOC_INSTALL_DIR=/usr/local/bin bash
+  | TRELLOC_VERSION=v1.0.0 TRELLOC_INSTALL_DIR=/usr/local/bin bash
 ```
 
 If the install directory isn't on your `PATH`, the script prints the line to add to your shell profile.
@@ -45,7 +45,7 @@ Installs `trelloc.exe` to `%LOCALAPPDATA%\Programs\trelloc\bin` after verifying 
 
 ```powershell
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/mulhamna/trello-commands/main/install.ps1))) `
-  -Version v0.1.0 -InstallDir "C:\Tools\trelloc" -SkipPathUpdate
+  -Version v1.0.0 -InstallDir "C:\Tools\trelloc" -SkipPathUpdate
 ```
 
 | Parameter | Default | Purpose |

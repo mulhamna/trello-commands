@@ -80,7 +80,7 @@ irm https://raw.githubusercontent.com/mulhamna/trello-commands/main/install.ps1 
 | Cargo | `cargo install trelloc` |
 | Manual | archives on the [Releases](https://github.com/mulhamna/trello-commands/releases) page |
 
-The install scripts and the npm package verify every download against the release's `checksums.txt` (more options, upgrades and uninstalling: [INSTALL.md](INSTALL.md)); release archives also carry [build provenance attestations](https://github.com/mulhamna/trello-commands/attestations). Pin a version with `TRELLOC_VERSION=v0.1.0` (sh) or `-Version v0.1.0` (PowerShell).
+The install scripts and the npm package verify every download against the release's `checksums.txt` (more options, upgrades and uninstalling: [INSTALL.md](INSTALL.md)); release archives also carry [build provenance attestations](https://github.com/mulhamna/trello-commands/attestations). Pin a version with `TRELLOC_VERSION=v1.0.0` (sh) or `-Version v1.0.0` (PowerShell).
 
 ## Quick start
 
