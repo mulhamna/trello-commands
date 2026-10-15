@@ -1,0 +1,64 @@
+name: Feature request
+description: Propose a new command, MCP tool, or enhancement
+title: "[feat]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem first, then the solution. Check the [roadmap](https://github.com/mulhamna/trello-commands/blob/main/docs/ROADMAP.md) — it may already be planned.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - trelloc (CLI)
+        - MCP tools
+        - trelloc-core (library)
+        - Packaging / install
+        - Documentation
+        - Other / cross-cutting
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and why doesn't trelloc handle it today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Desired behavior — CLI flags, MCP tool name and input shape, output.
+    validations:
+      required: true
+
+  - type: textarea
+    id: api
+    attributes:
+      label: Trello API references
+      description: Links to the endpoints in the Trello REST reference this would use.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: textarea
+    id: compat
+    attributes:
+      label: Breaking-change impact
+      description: Does this change existing flags, JSON output, MCP tool schemas, or the trelloc-core API?
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched existing issues for duplicates.
+          required: true

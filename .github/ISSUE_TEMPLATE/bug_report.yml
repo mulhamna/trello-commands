@@ -1,0 +1,129 @@
+name: Bug report
+description: Report a defect in the trelloc CLI, MCP server, or trelloc-core
+title: "[bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Before submitting:
+        - Search [existing issues](https://github.com/mulhamna/trello-commands/issues?q=is%3Aissue) for duplicates.
+        - Run `trelloc --version` and check you're on the latest release.
+        - **Redact** your API key and token, emails, workspace names and card contents from anything you paste.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `trelloc --version`.
+      placeholder: "trelloc 0.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - trelloc (CLI)
+        - trelloc mcp serve (MCP server)
+        - trelloc mcp install / doctor
+        - trelloc-core (library)
+        - Packaging (npm / Homebrew / Scoop / install script)
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: Install method
+      options:
+        - npm
+        - cargo install
+        - Homebrew
+        - Scoop
+        - install.sh / install.ps1
+        - GitHub release binary
+        - Built from source
+    validations:
+      required: true
+
+  - type: dropdown
+    id: plan
+    attributes:
+      label: Trello plan
+      description: Some APIs and rate limits depend on the workspace plan.
+      options:
+        - Free
+        - Standard
+        - Premium
+        - Enterprise
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "macOS 15.2 (arm64)"
+    validations:
+      required: true
+
+  - type: input
+    id: mcp-client
+    attributes:
+      label: MCP client (if relevant)
+      placeholder: "Claude Code 2.x, Cursor, Codex, …"
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands / tool calls with flags and inputs.
+      placeholder: |
+        1. `trelloc card list --board Roadmap --list Doing --mine`
+        2. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Full error message, including the error code if Trello returned one.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Debug output
+      description: Re-run with `--verbose` (or `RUST_LOG=debug`). Tokens are redacted automatically, but double-check before pasting.
+      render: shell
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched existing issues and found no duplicate.
+          required: true
+        - label: I removed tokens, emails and private workspace data from this report.
+          required: true
