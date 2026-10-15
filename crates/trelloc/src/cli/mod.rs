@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod bulk;
 pub mod card;
 pub mod collab;
 pub mod hierarchy;

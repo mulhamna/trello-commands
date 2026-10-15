@@ -5,12 +5,12 @@ use clap::Subcommand;
 use trelloc_core::{
     client::Filter,
     config::ConfigFile,
-    ops::{self, BoardListInput},
+    ops::{self, BoardListInput, BoardUpdate, ListUpdate},
     resolve::suggest,
 };
 
 use super::Ctx;
-use crate::output::{print_json, print_table};
+use crate::output::{confirm, print_json, print_table};
 
 #[derive(Debug, Subcommand)]
 pub enum BoardCmd {
@@ -25,6 +25,24 @@ pub enum BoardCmd {
     View { board: Option<String> },
     /// Set the profile's default board
     Use { board: String },
+    /// Create a board
+    Create {
+        name: String,
+        /// Copy lists, labels and cards from this board
+        #[arg(long)]
+        from: Option<String>,
+        /// Don't add To Do / Doing / Done
+        #[arg(long)]
+        no_default_lists: bool,
+    },
+    /// Rename a board
+    Rename { board: String, name: String },
+    /// Archive (close) a board
+    Archive { board: String },
+    /// Restore an archived board
+    Unarchive { board: String },
+    /// Delete a board permanently, with all lists and cards
+    Delete { board: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -36,6 +54,49 @@ pub enum ListCmd {
         /// Include archived lists
         #[arg(long)]
         closed: bool,
+    },
+    /// Create a list
+    Create {
+        name: String,
+        #[arg(long)]
+        board: Option<String>,
+        /// top | bottom | number
+        #[arg(long)]
+        pos: Option<String>,
+    },
+    /// Rename a list
+    Rename {
+        list: String,
+        name: String,
+        #[arg(long)]
+        board: Option<String>,
+    },
+    /// Archive a list
+    Archive {
+        list: String,
+        #[arg(long)]
+        board: Option<String>,
+    },
+    /// Restore an archived list (by id)
+    Unarchive {
+        list: String,
+        #[arg(long)]
+        board: Option<String>,
+    },
+    /// Move every card in a list to another list
+    MoveCards {
+        list: String,
+        /// List name or Board/List
+        #[arg(long)]
+        to: String,
+        #[arg(long)]
+        board: Option<String>,
+    },
+    /// Archive every card in a list
+    ArchiveCards {
+        list: String,
+        #[arg(long)]
+        board: Option<String>,
     },
 }
 
@@ -170,6 +231,73 @@ pub async fn board(ctx: &Ctx, cmd: BoardCmd) -> Result<()> {
             file.save()?;
             println!("Default board for profile '{name}': {} ({}).", b.name, b.id);
         }
+        BoardCmd::Create {
+            name,
+            from,
+            no_default_lists,
+        } => {
+            let b = ops::board_create(
+                &r,
+                &name,
+                ctx.workspace.as_deref(),
+                from.as_deref(),
+                !no_default_lists,
+            )
+            .await?;
+            if ctx.json {
+                return print_json(&ops::board_summary(&b));
+            }
+            println!("Created board {} ({})  {}", b.name, b.short_link, b.url);
+        }
+        BoardCmd::Rename { board, name } => {
+            let b = ops::board_update(
+                &r,
+                &board,
+                &BoardUpdate {
+                    name: Some(name),
+                    ..Default::default()
+                },
+            )
+            .await?;
+            println!("Renamed board to '{}'.", b.name);
+        }
+        BoardCmd::Archive { board } => {
+            if !confirm(ctx.yes, &format!("Archive board '{board}'?"))? {
+                return Ok(());
+            }
+            let b = ops::board_update(
+                &r,
+                &board,
+                &BoardUpdate {
+                    closed: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await?;
+            println!("Archived board '{}'.", b.name);
+        }
+        BoardCmd::Unarchive { board } => {
+            let b = ops::board_update(
+                &r,
+                &board,
+                &BoardUpdate {
+                    closed: Some(false),
+                    ..Default::default()
+                },
+            )
+            .await?;
+            println!("Restored board '{}'.", b.name);
+        }
+        BoardCmd::Delete { board } => {
+            if !confirm(
+                ctx.yes,
+                &format!("Permanently delete board '{board}' with every list and card?"),
+            )? {
+                return Ok(());
+            }
+            let b = ops::board_delete(&r, &board).await?;
+            println!("Deleted board '{}'.", b.name);
+        }
     }
     Ok(())
 }
@@ -225,6 +353,69 @@ pub async fn list(ctx: &Ctx, cmd: ListCmd) -> Result<()> {
                     ]
                 }),
             );
+        }
+        ListCmd::Create { name, board, pos } => {
+            let l = ops::list_create(&r, board.as_deref(), &name, pos.as_deref()).await?;
+            if ctx.json {
+                return print_json(&l);
+            }
+            println!("Created list '{}' ({}).", l.name, l.id);
+        }
+        ListCmd::Rename { list, name, board } => {
+            let l = ops::list_update(
+                &r,
+                board.as_deref(),
+                &list,
+                &ListUpdate {
+                    name: Some(name),
+                    ..Default::default()
+                },
+            )
+            .await?;
+            println!("Renamed list to '{}'.", l.name);
+        }
+        ListCmd::Archive { list, board } => {
+            let l = ops::list_update(
+                &r,
+                board.as_deref(),
+                &list,
+                &ListUpdate {
+                    closed: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await?;
+            println!("Archived list '{}' ({}).", l.name, l.id);
+        }
+        ListCmd::Unarchive { list, board } => {
+            let l = ops::list_update(
+                &r,
+                board.as_deref(),
+                &list,
+                &ListUpdate {
+                    closed: Some(false),
+                    ..Default::default()
+                },
+            )
+            .await?;
+            println!("Restored list '{}'.", l.name);
+        }
+        ListCmd::MoveCards { list, to, board } => {
+            if !confirm(ctx.yes, &format!("Move every card in '{list}' to '{to}'?"))? {
+                return Ok(());
+            }
+            let (from, tb, tl) = ops::list_move_cards(&r, board.as_deref(), &list, &to).await?;
+            println!(
+                "Moved all cards from '{}' to {}/{}.",
+                from.name, tb.name, tl.name
+            );
+        }
+        ListCmd::ArchiveCards { list, board } => {
+            if !confirm(ctx.yes, &format!("Archive every card in '{list}'?"))? {
+                return Ok(());
+            }
+            let l = ops::list_archive_cards(&r, board.as_deref(), &list).await?;
+            println!("Archived all cards in '{}'.", l.name);
         }
     }
     Ok(())

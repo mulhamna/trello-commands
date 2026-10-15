@@ -255,6 +255,17 @@ pub enum CardCmd {
     },
     /// Open a card in the browser
     Open { card: Option<String> },
+    /// Bulk edits over filtered cards (dry-run first with --dry-run)
+    #[command(subcommand)]
+    Bulk(super::bulk::BulkCmd),
+    /// Mixed operations from a JSON file
+    Batch {
+        /// JSON array of {"op": "create"|"update"|"move"|"comment"|"archive"|"delete", …}; - for stdin
+        #[arg(long)]
+        file: String,
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 /// `Name=value` → map, keeping the first `=`.
@@ -578,6 +589,8 @@ pub async fn run(ctx: &Ctx, cmd: CardCmd) -> Result<()> {
             open::that(&c.url).context("opening the browser")?;
             println!("{}", c.url);
         }
+        CardCmd::Bulk(cmd) => super::bulk::bulk(ctx, &r, cmd).await?,
+        CardCmd::Batch { file, dry_run } => super::bulk::batch(ctx, &r, &file, dry_run).await?,
     }
     Ok(())
 }

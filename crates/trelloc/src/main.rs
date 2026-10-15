@@ -97,6 +97,34 @@ enum Commands {
     /// Custom fields (needs the Custom Fields Power-Up)
     #[command(subcommand)]
     Field(FieldCmd),
+    /// My cards: moved, completed, commented since; in progress, due soon, overdue
+    Standup {
+        #[arg(long, default_value = "yesterday")]
+        since: String,
+        #[arg(long)]
+        board: Option<String>,
+        /// Someone else's standup (username)
+        #[arg(long)]
+        member: Option<String>,
+    },
+    /// Card counts for a board: per list, per member, overdue, no due, done
+    Summary {
+        #[arg(long)]
+        board: Option<String>,
+    },
+    /// Recent activity of a board, a card, or yourself
+    Activity {
+        #[arg(long)]
+        board: Option<String>,
+        #[arg(long)]
+        card: Option<String>,
+        #[arg(long)]
+        since: Option<String>,
+        #[arg(long)]
+        member: Option<String>,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+    },
     /// Attach files or URLs to a card
     Attach {
         card: String,
@@ -168,6 +196,31 @@ async fn run(cli: Cli) -> Result<()> {
             cover,
         } => collab::attach(&ctx, card, targets, name, cover).await,
         Commands::Attachment(c) => collab::attachment(&ctx, c).await,
+        Commands::Standup {
+            since,
+            board,
+            member,
+        } => report::standup(&ctx, since, board, member).await,
+        Commands::Summary { board } => report::summary(&ctx, board).await,
+        Commands::Activity {
+            board,
+            card,
+            since,
+            member,
+            limit,
+        } => {
+            report::activity(
+                &ctx,
+                trelloc_core::ops::ActivityInput {
+                    board,
+                    card,
+                    since,
+                    member,
+                    limit: Some(limit),
+                },
+            )
+            .await
+        }
         Commands::Api {
             method,
             path,
