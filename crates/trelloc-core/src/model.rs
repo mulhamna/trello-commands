@@ -129,6 +129,187 @@ impl BoardSnapshot {
     }
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Badges {
+    pub comments: u32,
+    pub attachments: u32,
+    pub check_items: u32,
+    pub check_items_checked: u32,
+    pub description: bool,
+}
+
+/// A custom field value on a card. `value` is `{"text"|"number"|"date"|
+/// "checked": "…"}`; dropdowns use `id_value` (the option id).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct CustomFieldItem {
+    pub id: String,
+    pub id_custom_field: String,
+    pub id_value: Option<String>,
+    pub value: Option<serde_json::Value>,
+}
+
+impl CustomFieldItem {
+    /// Human value: option text, the number/text/date, or `true`/`false`.
+    pub fn display_value(&self, field: Option<&CustomField>) -> String {
+        if let Some(opt) = &self.id_value {
+            return field
+                .and_then(|f| f.options.iter().find(|o| &o.id == opt))
+                .map(|o| o.value.text.clone())
+                .unwrap_or_else(|| opt.clone());
+        }
+        let Some(v) = &self.value else {
+            return String::new();
+        };
+        for key in ["text", "number", "date", "checked"] {
+            if let Some(x) = v.get(key) {
+                return match x {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+            }
+        }
+        v.to_string()
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct CheckItem {
+    pub id: String,
+    pub name: String,
+    /// `complete` or `incomplete`.
+    pub state: String,
+    pub pos: f64,
+    pub due: Option<String>,
+    pub id_member: Option<String>,
+    pub id_checklist: String,
+}
+
+impl CheckItem {
+    pub fn done(&self) -> bool {
+        self.state == "complete"
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Checklist {
+    pub id: String,
+    pub name: String,
+    pub id_card: String,
+    pub pos: f64,
+    pub check_items: Vec<CheckItem>,
+}
+
+impl Checklist {
+    /// `(done, total)`.
+    pub fn progress(&self) -> (usize, usize) {
+        (
+            self.check_items.iter().filter(|i| i.done()).count(),
+            self.check_items.len(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Attachment {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub bytes: Option<u64>,
+    pub mime_type: Option<String>,
+    pub date: Option<String>,
+    pub is_upload: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Card {
+    pub id: String,
+    /// Per-board card number (`#42`).
+    pub id_short: u32,
+    pub short_link: String,
+    pub short_url: String,
+    pub url: String,
+    pub name: String,
+    pub desc: String,
+    pub closed: bool,
+    pub id_board: String,
+    pub id_list: String,
+    pub id_members: Vec<String>,
+    pub id_labels: Vec<String>,
+    pub labels: Vec<Label>,
+    pub pos: f64,
+    pub due: Option<String>,
+    pub start: Option<String>,
+    pub due_complete: bool,
+    pub date_last_activity: Option<String>,
+    pub badges: Badges,
+    pub cover: Option<serde_json::Value>,
+    pub subscribed: bool,
+    pub custom_field_items: Vec<CustomFieldItem>,
+    pub checklists: Vec<Checklist>,
+    pub attachments: Vec<Attachment>,
+}
+
+impl Card {
+    /// Created time from the id (no extra call).
+    pub fn created_at(&self) -> Option<chrono::DateTime<chrono::Utc>> {
+        crate::time::created_at(&self.id)
+    }
+
+    pub fn has_cover(&self) -> bool {
+        self.cover.as_ref().is_some_and(|c| {
+            ["color", "idAttachment", "idUploadedBackground", "url"]
+                .iter()
+                .any(|k| c.get(*k).is_some_and(|v| !v.is_null()))
+        })
+    }
+}
+
+/// An action from the activity feed (comments are `commentCard` actions).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Action {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub action_type: String,
+    pub date: String,
+    pub id_member_creator: String,
+    pub member_creator: Option<Member>,
+    pub data: serde_json::Value,
+}
+
+impl Action {
+    pub fn text(&self) -> Option<&str> {
+        self.data.get("text").and_then(serde_json::Value::as_str)
+    }
+
+    pub fn card_id(&self) -> Option<&str> {
+        self.data
+            .get("card")
+            .and_then(|c| c.get("id"))
+            .and_then(serde_json::Value::as_str)
+    }
+
+    pub fn card_name(&self) -> Option<&str> {
+        self.data
+            .get("card")
+            .and_then(|c| c.get("name"))
+            .and_then(serde_json::Value::as_str)
+    }
+
+    pub fn author(&self) -> String {
+        self.member_creator
+            .as_ref()
+            .map(|m| m.username.clone())
+            .unwrap_or_else(|| self.id_member_creator.clone())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,5 +331,37 @@ mod tests {
         assert_eq!(s.labels[0].display(), "red");
         assert_eq!(s.custom_fields[0].options[0].value.text, "High");
         assert_eq!(s.member("m1").unwrap().full_name, "Alice");
+    }
+
+    #[test]
+    fn card_values_and_cover() {
+        let c: Card = serde_json::from_value(serde_json::json!({
+            "id": "5f2b0c0e1a2b3c4d5e6f7a8b", "idShort": 42, "name": "Fix", "due": null,
+            "cover": {"color": null, "idAttachment": null},
+            "customFieldItems": [
+                {"idCustomField": "f1", "idValue": "o1"},
+                {"idCustomField": "f2", "value": {"number": "3"}},
+                {"idCustomField": "f3", "value": {"checked": "true"}}
+            ],
+            "badges": {"comments": 2, "checkItems": 3, "checkItemsChecked": 1}
+        }))
+        .unwrap();
+        assert!(!c.has_cover());
+        assert!(c.created_at().is_some());
+        let f1 = CustomField {
+            id: "f1".into(),
+            options: vec![FieldOption {
+                id: "o1".into(),
+                value: OptionValue {
+                    text: "High".into(),
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert_eq!(c.custom_field_items[0].display_value(Some(&f1)), "High");
+        assert_eq!(c.custom_field_items[1].display_value(None), "3");
+        assert_eq!(c.custom_field_items[2].display_value(None), "true");
+        assert_eq!(c.badges.check_items, 3);
     }
 }
