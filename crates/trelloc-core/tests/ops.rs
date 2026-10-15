@@ -431,7 +431,7 @@ async fn same_board_move_has_no_warnings() {
 }
 
 #[tokio::test]
-async fn board_number_refs_resolve_via_card_numbers() {
+async fn board_number_refs_resolve_via_short_ids() {
     let f = Fixture::new().await;
     Mock::given(method("GET"))
         .and(path(format!("/boards/{B1}/cards/all")))

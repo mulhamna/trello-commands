@@ -90,7 +90,7 @@ impl TrelloClient {
 
     /// `(id, idShort)` of every card on a board, archived included, for
     /// resolving `board#42`.
-    pub async fn card_numbers(&self, board_id: &str) -> Result<Vec<(String, u32)>> {
+    pub async fn short_ids(&self, board_id: &str) -> Result<Vec<(String, u32)>> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Num {

@@ -683,7 +683,7 @@ impl<'a> Resolver<'a> {
             CardRef::BoardNumber { board, number } => {
                 let b = self.board_or_default(board.as_deref()).await?;
                 self.client
-                    .card_numbers(&b.id)
+                    .short_ids(&b.id)
                     .await?
                     .into_iter()
                     .find(|(_, n)| *n == number)
