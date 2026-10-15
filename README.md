@@ -2,12 +2,12 @@
 
 **Unofficial** Trello CLI and MCP server in one Rust binary. Sibling of [jira-commands](https://github.com/mulhamna/jira-commands).
 
-> Status: pre-alpha, under construction. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> Status: feature-complete for v1, not released yet. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 One download gives you both:
 
 - **`trelloc …`** — a fast CLI for boards, lists, cards, comments, checklists, labels, custom fields and bulk operations.
-- **`trelloc mcp serve`** — an MCP server so Claude, Cursor, Codex, Gemini CLI and friends can work in your Trello.
+- **`trelloc mcp serve`** — an MCP server with 47 `trello_*` tools so Claude, Cursor, Codex, Gemini CLI and friends can work in your Trello.
 
 ## Why not Trello's official MCP server?
 
@@ -27,12 +27,14 @@ Trello's REST limits (100 requests / 10 s per token, 300 / 10 s per key, and a t
 
 ## Install
 
-> Coming with the first release. Every channel installs the same single binary.
+> Available once the first release is published. Every channel installs the same single binary; details in [INSTALL.md](INSTALL.md).
 
 ```bash
-npm i -g @mulham28/trelloc        # npm
-cargo install trelloc             # crates.io
-# brew / scoop / install.sh — planned
+curl -fsSL https://raw.githubusercontent.com/mulhamna/trello-commands/main/install.sh | bash
+npm i -g @mulham28/trelloc          # npm
+brew install mulhamna/tap/trelloc   # Homebrew
+scoop install mulhamna/trelloc      # Scoop (after `scoop bucket add mulhamna https://github.com/mulhamna/scoop-bucket`)
+cargo install trelloc               # crates.io
 ```
 
 ## Quick start
@@ -47,6 +49,8 @@ trelloc card create "Fix login redirect" --list "To Do" --label bug --due fri
 trelloc card move Roadmap#42 --to Done
 trelloc comment add Roadmap#42 "Deployed to staging"
 trelloc checklist add Roadmap#42 "Release" --item "Changelog" --item "Tag"
+trelloc card bulk move --list Review --to Done --dry-run
+trelloc standup
 ```
 
 Cards can be referenced by id, short link, URL, or `board#number`. Boards, lists, labels, members and custom fields can be referenced by name, with "did you mean" suggestions on typos.
@@ -63,7 +67,7 @@ Or by hand:
 ```json
 {
   "mcpServers": {
-    "trello": { "command": "trelloc", "args": ["mcp", "serve"] }
+    "trelloc": { "command": "trelloc", "args": ["mcp", "serve"] }
   }
 }
 ```
@@ -79,7 +83,10 @@ Credentials stay in `~/.config/trelloc/config.toml` (or `TRELLO_API_KEY` / `TREL
 | `TRELLO_PROFILE` | Profile name in `config.toml` |
 | `TRELLO_DEFAULT_BOARD` | Board used when `--board` is omitted |
 | `TRELLO_WORKSPACE` | Default workspace for board lookups |
+| `TRELLO_DEFAULT_LIST` | List used by `card create` when `--list` is omitted |
+| `TRELLO_TIMEZONE` | IANA zone for human dates (default: system) |
 | `TRELLO_TIMEOUT_SECS` | HTTP timeout |
+| `TRELLO_CARD_LIMIT` | Default `card list` limit |
 
 ## Docs
 
