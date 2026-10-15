@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod card;
+pub mod collab;
 pub mod hierarchy;
 pub mod mcp;
 pub mod report;

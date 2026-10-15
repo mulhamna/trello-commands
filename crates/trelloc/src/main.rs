@@ -12,6 +12,7 @@ use trelloc_core::TrelloError;
 use cli::{
     auth::{AuthCmd, ConfigCmd, WorkspaceCmd},
     card::CardCmd,
+    collab::{AttachmentCmd, ChecklistCmd, CommentCmd, FieldCmd, LabelCmd},
     hierarchy::{AliasCmd, BoardCmd, CacheCmd, ListCmd, MemberCmd},
     mcp::McpCmd,
 };
@@ -84,6 +85,33 @@ enum Commands {
     /// List, view, create, update, move, copy, archive and delete cards
     #[command(subcommand)]
     Card(CardCmd),
+    /// List, add, edit and delete comments
+    #[command(subcommand)]
+    Comment(CommentCmd),
+    /// Checklists and their items
+    #[command(subcommand)]
+    Checklist(ChecklistCmd),
+    /// Board labels
+    #[command(subcommand)]
+    Label(LabelCmd),
+    /// Custom fields (needs the Custom Fields Power-Up)
+    #[command(subcommand)]
+    Field(FieldCmd),
+    /// Attach files or URLs to a card
+    Attach {
+        card: String,
+        /// Local files or http(s) URLs
+        #[arg(required = true)]
+        targets: Vec<String>,
+        #[arg(long)]
+        name: Option<String>,
+        /// Use the attachment as the card cover
+        #[arg(long)]
+        cover: bool,
+    },
+    /// List or delete attachments
+    #[command(subcommand)]
+    Attachment(AttachmentCmd),
     /// Raw API request, e.g. `trelloc api GET /members/me/boards --query fields=name`
     Api {
         method: String,
@@ -129,6 +157,17 @@ async fn run(cli: Cli) -> Result<()> {
         Commands::Member(c) => hierarchy::member(&ctx, c).await,
         Commands::Cache(c) => hierarchy::cache(&ctx, c).await,
         Commands::Card(c) => card::run(&ctx, c).await,
+        Commands::Comment(c) => collab::comment(&ctx, c).await,
+        Commands::Checklist(c) => collab::checklist(&ctx, c).await,
+        Commands::Label(c) => collab::label(&ctx, c).await,
+        Commands::Field(c) => collab::field(&ctx, c).await,
+        Commands::Attach {
+            card,
+            targets,
+            name,
+            cover,
+        } => collab::attach(&ctx, card, targets, name, cover).await,
+        Commands::Attachment(c) => collab::attachment(&ctx, c).await,
         Commands::Api {
             method,
             path,
