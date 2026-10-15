@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/mulhamna/trello-commands/compare/v1.0.0...v1.0.1) (2026-10-15)
+
+
+### Miscellaneous Chores
+
+* release 1.0.1 ([b683a94](https://github.com/mulhamna/trello-commands/commit/b683a947cde4873664cae72f6c694c04e4c89e37))
+
 ## 1.0.0 (2026-10-15)
 
 
