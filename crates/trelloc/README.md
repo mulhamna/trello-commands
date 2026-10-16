@@ -5,7 +5,7 @@
 [![CI](https://github.com/mulhamna/trello-commands/actions/workflows/ci.yml/badge.svg)](https://github.com/mulhamna/trello-commands/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/mulhamna/trello-commands/blob/main/LICENSE)
 
-**Trello from your terminal — and from your AI agent.** One binary: a fast CLI for humans and scripts, plus an MCP server with 47 tools (`trelloc mcp serve`).
+**Trello from your terminal — and from your AI agent.** One binary: a fast CLI for humans and scripts, plus an MCP server with 48 tools (`trelloc mcp serve`).
 
 ```bash
 cargo install trelloc
@@ -13,6 +13,10 @@ trelloc auth login            # API key + token: the command walks you through b
 trelloc card list --board Roadmap --mine --overdue
 trelloc mcp install           # register the MCP server with Claude, Cursor, Codex, …
 ```
+
+`trelloc auth login` needs your own Trello app API key and user token. Create an app without Power-Up capabilities; see the [authentication guide](https://github.com/mulhamna/trello-commands/blob/main/INSTALL.md#configure-trello-access).
+
+Board access is stored per profile. Choose all boards or a subset during MCP setup, then activate or deactivate boards with `trelloc board access`. See the [board-access guide](https://github.com/mulhamna/trello-commands/blob/main/INSTALL.md#configure-trello-access).
 
 ## Highlights
 
@@ -35,7 +39,7 @@ trelloc mcp install --client claude-code   # or cursor, codex, gemini-cli, vscod
 { "mcpServers": { "trelloc": { "command": "trelloc", "args": ["mcp", "serve"] } } }
 ```
 
-47 `trello_*` tools across boards, lists, cards, bulk, comments, checklists, labels, custom fields, attachments and reports. Inputs accept names and human dates; destructive tools require `confirm: true`; the key and token are read from the trelloc config and never written into client configs. Stdio by default, Streamable HTTP with `--transport streamable-http`.
+48 `trello_*` tools across boards, lists, cards, bulk, comments, checklists, labels, custom fields, attachments, reports and board access. Inputs accept names and human dates; destructive tools require `confirm: true`; the key and token are read from the trelloc config and never written into client configs. Stdio by default, Streamable HTTP with `--transport streamable-http`.
 
 ## Other ways to install
 

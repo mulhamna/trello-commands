@@ -41,7 +41,7 @@ CLI:
 MCP:
 - [x] `trelloc-mcp/src/lib.rs` ported; `trelloc mcp serve` wired; stdout clean in stdio mode.
 - [x] `error.rs` ported.
-- [x] Tools: `trello_auth_status`, `trello_whoami`, `trello_profile_list`, `trello_workspace_list`, `trello_board_list`, `trello_board_get`, `trello_member_list`, `trello_api_request`.
+- [x] Tools: `trello_auth_status`, `trello_whoami`, `trello_profile_list`, `trello_board_access`, `trello_workspace_list`, `trello_board_list`, `trello_board_get`, `trello_member_list`, `trello_api_request`.
 
 **Accept:**
 - wiremock: header is `OAuth oauth_consumer_key="…", oauth_token="…"`; **no request URL contains `key=` or `token=`**; 429 then 200 succeeds; 429 ×5 → `RateLimit` carrying the limit name; plain-text 401 → `Auth`.

@@ -245,6 +245,53 @@ async fn unknown_board_exit_code_4_with_suggestion() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn comment_delete_rejects_a_card_on_an_inactive_board() {
+    let server = MockServer::start().await;
+    let env = Env::new(Some(server.uri()));
+    std::fs::write(
+        env.dir.path().join("config/board-access.toml"),
+        "[profiles.default]\nSelected = [\"another-board\"]\n",
+    )
+    .unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/actions/action1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "action1", "type": "commentCard", "data": { "card": { "id": "card1" } }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/cards/card1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "card1", "idBoard": BOARD
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/actions/action1"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(0)
+        .mount(&server)
+        .await;
+
+    let o = env.run(&["comment", "delete", "action1", "--yes"]).await;
+    assert!(
+        !o.status.success(),
+        "stdout: {}\nstderr: {}",
+        stdout(&o),
+        stderr(&o)
+    );
+    assert!(stderr(&o).contains("inactive"), "{}", stderr(&o));
+    assert!(server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .all(|request| request.method.as_str() != "DELETE"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn api_write_refuses_without_yes() {
     let server = MockServer::start().await;
     let o = Env::new(Some(server.uri()))
@@ -253,6 +300,34 @@ async fn api_write_refuses_without_yes() {
     assert!(!o.status.success());
     assert!(stderr(&o).contains("--yes"), "{}", stderr(&o));
     assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn api_is_rejected_for_restricted_board_access() {
+    let server = MockServer::start().await;
+    let env = Env::new(Some(server.uri()));
+    std::fs::write(
+        env.dir.path().join("config/board-access.toml"),
+        "[profiles.default]\nSelected = []\n",
+    )
+    .unwrap();
+    let o = env.run(&["api", "GET", "/members/me"]).await;
+    assert!(!o.status.success());
+    assert!(
+        stderr(&o).contains("raw API requests are disabled while board access is restricted"),
+        "{}",
+        stderr(&o)
+    );
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn board_access_all_persists_to_selected_profile_noninteractively() {
+    let env = Env::new(None);
+    let o = env.run(&["board", "access", "all"]).await;
+    assert!(o.status.success(), "{}", stderr(&o));
+    let policy = std::fs::read_to_string(env.dir.path().join("config/board-access.toml")).unwrap();
+    assert!(policy.contains("All"), "{policy}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -9,7 +9,7 @@
 ```
 
 **Trello from your terminal — and from your AI agent.**
-One Rust binary: a fast CLI for humans and scripts, plus an MCP server with 47 tools.
+One Rust binary: a fast CLI for humans and scripts, plus an MCP server with 48 tools.
 
 [![CI](https://github.com/mulhamna/trello-commands/actions/workflows/ci.yml/badge.svg)](https://github.com/mulhamna/trello-commands/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/trelloc.svg?label=crates.io)](https://crates.io/crates/trelloc)
@@ -39,22 +39,22 @@ error: Could not resolve list 'Revieww' (did you mean: Review?)
 - **Every way to point at a card.** Id, short link, `trello.com/c/…` URL, or `Board#42`.
 - **Human dates.** `--due fri`, `--due "2026-10-20 14:00"`, `--due-before eow`, `--active-after -2w`, `--due none`.
 - **Built for Trello's rate limits.** Requests are paced client-side (100 per 10 s per token, the stricter `/members` and search budgets), board schemas are cached, and bulk work runs with bounded concurrency.
-- **Agent-ready.** `trelloc mcp serve` exposes 47 typed `trello_*` tools to Claude, Cursor, Codex, Gemini CLI, VS Code and more; `trelloc mcp install` registers it in one command.
-- **Multiple accounts.** One profile per key + token; switch with `--profile`, narrow board lookups with `--workspace`, and let an agent pick the account per tool call.
+- **Agent-ready.** `trelloc mcp serve` exposes 48 typed `trello_*` tools to Claude, Cursor, Codex, Gemini CLI, VS Code and more; `trelloc mcp install` registers it in one command.
+- **Multiple accounts and board scopes.** Each profile has its own credentials and active-board policy; choose all boards or a subset, then activate or deactivate boards later.
 - **Safe by default.** Archive is the default; deletes confirm on the CLI (`--yes` to skip) and require `confirm: true` over MCP. Your key and token are never printed, logged, put in a URL, or written into client configs.
-- **Scriptable.** `--json` on every read command, stable exit codes, and a raw `trelloc api` escape hatch for anything not wrapped yet.
+- **Scriptable.** `--json` on every read command, stable exit codes, and raw `trelloc api` access while board access is unrestricted.
 
 ### trelloc vs Trello's official MCP server
 
 | | Official MCP (`mcp.trello.com/v1`) | trelloc |
 | --- | --- | --- |
 | Auth | OAuth only | Your own API key + token |
-| Workspaces per connection | One | Every workspace your token can see |
+| Board scope | Every board the token can see | All boards or a per-profile active-board selection |
 | Permanent delete | No (archive only) | Yes, with explicit confirmation (archive stays the default) |
 | Comments, attachments, custom fields, label editing, card copy | Planned | Yes |
 | Local file upload | No | Yes |
 | A CLI for humans and scripts | No | Yes, same binary |
-| Raw API escape hatch | No | `trelloc api` / `trello_api_request` |
+| Raw API escape hatch | No | `trelloc api` / `trello_api_request` when board access is unrestricted |
 
 Comparison based on the official server's README as of October 2026.
 
@@ -85,7 +85,7 @@ The install scripts and the npm package verify every download against the releas
 ## Quick start
 
 ```bash
-trelloc auth login                  # create an API key, approve a token in the browser, paste both
+trelloc auth login                  # enter your app API key, approve and paste the user token
 trelloc tree                        # Workspaces → Boards → Lists, with ids
 trelloc board use Roadmap           # default board for commands without --board
 trelloc alias set doing "Roadmap/Doing"
@@ -97,6 +97,8 @@ trelloc comment add Roadmap#42 "Deployed to staging"
 trelloc checklist add Roadmap#42 "Release" --item "Changelog" --item "Tag"
 trelloc standup
 ```
+
+Authentication requires your own Trello app API key and user token. Create an app without Power-Up capabilities; follow the [setup guide](INSTALL.md#configure-trello-access).
 
 Wire it into your AI client:
 
@@ -210,7 +212,7 @@ Or add it by hand:
 
 | Area | Tools |
 | --- | --- |
-| Account | `profile_list`, `auth_status`, `whoami`, `workspace_list`, `member_list` |
+| Account | `profile_list`, `auth_status`, `whoami`, `workspace_list`, `member_list`, `board_access` |
 | Boards & lists | `board_list`, `board_get`, `board_create`, `board_update`, `board_delete`, `list_create`, `list_update` |
 | Cards | `card_search`, `card_get`, `card_create`, `card_update`, `card_move`, `card_copy`, `card_archive`, `card_delete` |
 | Bulk | `card_bulk_create`, `card_bulk_update`, `batch` |
@@ -226,13 +228,13 @@ The entry is named `trelloc`, so it sits next to Trello's official server withou
 
 ## Configuration
 
-`trelloc auth login` writes a profile to the config file (permissions `600`; override the directory with `TRELLO_CONFIG_DIR`):
+`trelloc auth login` writes credentials to `config.toml` (permissions `600`). Board policy lives separately in `board-access.toml` and applies per profile.
 
-| OS | Config file |
+| OS | Config files |
 | --- | --- |
-| Linux | `~/.config/trelloc/config.toml` |
-| macOS | `~/Library/Application Support/trelloc/config.toml` |
-| Windows | `%APPDATA%\trelloc\config.toml` |
+| Linux | `~/.config/trelloc/config.toml` and `~/.config/trelloc/board-access.toml` |
+| macOS | `~/Library/Application Support/trelloc/config.toml` and `~/Library/Application Support/trelloc/board-access.toml` |
+| Windows | `%APPDATA%\trelloc\config.toml` and `%APPDATA%\trelloc\board-access.toml` |
 
 ```toml
 current_profile = "work"
@@ -251,7 +253,7 @@ Environment variables override the profile:
 
 | Variable | Purpose |
 | --- | --- |
-| `TRELLO_API_KEY` | API key (Power-Up admin page → API key) |
+| `TRELLO_API_KEY` | API key from your Trello app's **Trello Auth** settings |
 | `TRELLO_TOKEN` | User token |
 | `TRELLO_PROFILE` | Profile to use (or `--profile`) |
 | `TRELLO_WORKSPACE` | Default workspace for board lookups |
@@ -287,7 +289,7 @@ Exit codes: `0` ok · `1` error · `2` invalid input · `3` auth · `4` not foun
 
 ## Docs
 
-- [Install guide](INSTALL.md) · [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)
+- [Install and Trello auth guide](INSTALL.md) · [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)
 - [CLI spec](docs/CLI.md) · [MCP tools](docs/MCP.md) · [Architecture](docs/ARCHITECTURE.md) · [Trello API notes](docs/TRELLO-API.md) · [Roadmap](docs/ROADMAP.md)
 - Rust library: [`trelloc-core`](https://docs.rs/trelloc-core) (client, resolver, models) and [`trelloc-mcp`](https://docs.rs/trelloc-mcp) (embeddable MCP server)
 

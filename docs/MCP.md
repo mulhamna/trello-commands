@@ -2,11 +2,11 @@
 
 Run: `trelloc mcp serve [--transport stdio|streamable-http] [--host 127.0.0.1] [--port 8787] [--path /mcp]`. No separate MCP binary; the code lives in the `trelloc-mcp` library crate and ships inside `trelloc`.
 
-Auth: same config/profile as the CLI (`~/.config/trelloc/config.toml`, `TRELLO_API_KEY`, `TRELLO_TOKEN`, `TRELLO_PROFILE`). No OAuth.
+Auth: same config/profile as the CLI (`config.toml`, `board-access.toml`, `TRELLO_API_KEY`, `TRELLO_TOKEN`, `TRELLO_PROFILE`). No OAuth.
 
 ## Accounts
 
-Every tool takes an optional `profile`. Omitted → the server's profile (`TRELLO_PROFILE` in the client entry, else the active profile). `trello_profile_list` lists profiles. Rate limiting is tracked per token. Unlike the official server, there's no one-workspace-per-connection limit: tools see every workspace and board the token can see, and accept an optional `workspace` to narrow board resolution.
+Every tool takes an optional `profile`. Omitted → the server's profile (`TRELLO_PROFILE` in the client entry, else the active profile). `trello_profile_list` lists profiles. Rate limiting is tracked per token. Tools see every workspace the token can access, but board access follows the profile's active-board policy. Setup offers all boards or a selected subset; `workspace` further narrows board-name resolution.
 
 ## Design rules
 
@@ -17,6 +17,7 @@ Every tool takes an optional `profile`. Omitted → the server's profile (`TRELL
 5. **Stable errors** (`AppError`): `validation_error`, `unsafe_operation`, `auth_missing`, `config_error`, `resolve_error` (`data.suggestions`), `trello_api_error` (`data.status`, `data.code`), `rate_limited` (`data.limit`), `unavailable` (e.g. Custom Fields Power-Up off — `data.hint`). 4xx → `INVALID_PARAMS`, 5xx → `INTERNAL_ERROR`.
 6. **Descriptions are prompts.** Say when to use each tool and the traps, e.g. "prefer trello_card_search with a board for exact results; `query` uses Trello search syntax and may lag", "moving to another board can drop labels — check warnings".
 7. Rate limiting is invisible to the model; only exhausted retries surface as `rate_limited`.
+8. **Board access is per profile.** `trello_board_access` lists, activates, or deactivates boards. CLI and MCP store policy in `board-access.toml`; restricted profiles reject inactive boards and disable `trello_api_request`.
 
 ## Tools
 
@@ -29,6 +30,7 @@ Phase tags refer to `docs/ROADMAP.md`. "Official" = what Trello's official MCP (
 | `trello_auth_status` | — | profile, member, credentials present (masked), rate-limit headroom | — |
 | `trello_whoami` | — | cached member (id, username, fullName) | ✓ |
 | `trello_profile_list` | — | | — |
+| `trello_board_access` | `action: list\|all\|activate\|deactivate`, `board?`, `profile?`, `workspace?` | list board names and activation states; manage the policy |
 
 ### Hierarchy (P1)
 
@@ -110,7 +112,7 @@ Phase tags refer to `docs/ROADMAP.md`. "Official" = what Trello's official MCP (
 
 | Tool | Input | Notes |
 | --- | --- | --- |
-| `trello_api_request` | `method`, `path` (relative to `/1`), `query?`, `body?`, `confirm?` | non-GET requires `confirm: true` |
+| `trello_api_request` | `method`, `path` (relative to `/1`), `query?`, `body?`, `confirm?` | non-GET requires `confirm: true`; disabled when board access is restricted |
 
 ## Not mirrored from the official server
 

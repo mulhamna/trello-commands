@@ -4,13 +4,17 @@
 [![CI](https://github.com/mulhamna/trello-commands/actions/workflows/ci.yml/badge.svg)](https://github.com/mulhamna/trello-commands/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/mulhamna/trello-commands/blob/main/LICENSE)
 
-**Trello from your terminal — and from your AI agent.** A fast native CLI plus an MCP server with 47 tools, in one binary.
+**Trello from your terminal — and from your AI agent.** A fast native CLI plus an MCP server with 48 tools, in one binary.
 
 ```bash
 npm i -g @mulham28/trelloc
 trelloc auth login                      # API key + token (opens Trello's authorize page)
 trelloc mcp install --client claude-code
 ```
+
+Before login, create a Trello app without Power-Up capabilities and generate its API key. Follow the [authentication setup guide](https://github.com/mulhamna/trello-commands/blob/main/INSTALL.md#configure-trello-access).
+
+Interactive MCP setup asks whether to expose all boards or only selected boards. Manage active boards per profile with `trelloc board access`; see the [board-access guide](https://github.com/mulhamna/trello-commands/blob/main/INSTALL.md#configure-trello-access).
 
 ## What you get
 
@@ -25,7 +29,7 @@ trelloc standup
 
 - **Names, not ids** — boards, lists, labels, people (`me`, username) and custom fields resolved for you, with typo suggestions. Cards by id, shortLink, URL or `board#42`.
 - **Human dates** — `fri`, `tomorrow`, `+3d`, `eow`, `2026-10-20 14:00`.
-- **MCP server** — `trelloc mcp serve` gives Claude, Cursor, Codex, Gemini CLI, VS Code and others 47 `trello_*` tools: cards, bulk, comments, checklists, labels, custom fields, attachments, boards, lists and reports — across every workspace your token sees. Deletes require explicit confirmation.
+- **MCP server** — `trelloc mcp serve` exposes 48 `trello_*` tools to Claude, Cursor, Codex, Gemini CLI, VS Code and others. Its board access follows the active-board policy for the selected profile; deletes require explicit confirmation.
 - **Rate-limit aware** — paces itself under Trello's 100 requests / 10 s token limit and caches board schemas, so bulk work doesn't trip 429s.
 
 ## Use it from an MCP client

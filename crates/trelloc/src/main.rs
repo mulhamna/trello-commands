@@ -168,40 +168,81 @@ async fn run(cli: Cli) -> Result<()> {
         yes: cli.yes,
         refresh: cli.refresh,
     };
-    if let Some(p) = &ctx.profile {
+    if let Some(profile) = &ctx.profile {
         // The MCP server path loads config itself; make the flag visible there too.
-        std::env::set_var("TRELLO_PROFILE", p);
+        std::env::set_var("TRELLO_PROFILE", profile);
     }
+    dispatch(&ctx, cli.command).await
+}
+
+async fn dispatch(ctx: &cli::Ctx, command: Commands) -> Result<()> {
     use cli::*;
-    match cli.command {
-        Commands::Auth(c) => auth::auth(&ctx, c).await,
-        Commands::Whoami => auth::whoami(&ctx).await,
-        Commands::Workspace(c) => auth::workspace(&ctx, c).await,
-        Commands::Config(c) => auth::config(&ctx, c),
-        Commands::Board(c) => hierarchy::board(&ctx, c).await,
-        Commands::Tree => hierarchy::tree(&ctx, None).await,
-        Commands::List(c) => hierarchy::list(&ctx, c).await,
-        Commands::Alias(c) => hierarchy::alias(&ctx, c).await,
-        Commands::Member(c) => hierarchy::member(&ctx, c).await,
-        Commands::Cache(c) => hierarchy::cache(&ctx, c).await,
-        Commands::Card(c) => card::run(&ctx, c).await,
-        Commands::Comment(c) => collab::comment(&ctx, c).await,
-        Commands::Checklist(c) => collab::checklist(&ctx, c).await,
-        Commands::Label(c) => collab::label(&ctx, c).await,
-        Commands::Field(c) => collab::field(&ctx, c).await,
+    match command {
+        Commands::Auth(cmd) => auth::auth(ctx, cmd).await,
+        Commands::Whoami => auth::whoami(ctx).await,
+        Commands::Workspace(cmd) => auth::workspace(ctx, cmd).await,
+        Commands::Config(cmd) => auth::config(ctx, cmd),
+        Commands::Board(_)
+        | Commands::Tree
+        | Commands::List(_)
+        | Commands::Alias(_)
+        | Commands::Member(_)
+        | Commands::Cache(_) => run_hierarchy(ctx, command).await,
+        Commands::Card(cmd) => card::run(ctx, cmd).await,
+        Commands::Comment(_)
+        | Commands::Checklist(_)
+        | Commands::Label(_)
+        | Commands::Field(_)
+        | Commands::Attach { .. }
+        | Commands::Attachment(_) => run_collaboration(ctx, command).await,
+        Commands::Standup { .. }
+        | Commands::Summary { .. }
+        | Commands::Activity { .. }
+        | Commands::Api { .. } => run_report(ctx, command).await,
+        Commands::Mcp(cmd) => mcp::run(ctx, cmd).await,
+    }
+}
+
+async fn run_hierarchy(ctx: &cli::Ctx, command: Commands) -> Result<()> {
+    use cli::*;
+    match command {
+        Commands::Board(cmd) => hierarchy::board(ctx, cmd).await,
+        Commands::Tree => hierarchy::tree(ctx, None).await,
+        Commands::List(cmd) => hierarchy::list(ctx, cmd).await,
+        Commands::Alias(cmd) => hierarchy::alias(ctx, cmd).await,
+        Commands::Member(cmd) => hierarchy::member(ctx, cmd).await,
+        Commands::Cache(cmd) => hierarchy::cache(ctx, cmd).await,
+        _ => unreachable!("dispatch sends only hierarchy commands"),
+    }
+}
+
+async fn run_collaboration(ctx: &cli::Ctx, command: Commands) -> Result<()> {
+    use cli::*;
+    match command {
+        Commands::Comment(cmd) => collab::comment(ctx, cmd).await,
+        Commands::Checklist(cmd) => collab::checklist(ctx, cmd).await,
+        Commands::Label(cmd) => collab::label(ctx, cmd).await,
+        Commands::Field(cmd) => collab::field(ctx, cmd).await,
         Commands::Attach {
             card,
             targets,
             name,
             cover,
-        } => collab::attach(&ctx, card, targets, name, cover).await,
-        Commands::Attachment(c) => collab::attachment(&ctx, c).await,
+        } => collab::attach(ctx, card, targets, name, cover).await,
+        Commands::Attachment(cmd) => collab::attachment(ctx, cmd).await,
+        _ => unreachable!("dispatch sends only collaboration commands"),
+    }
+}
+
+async fn run_report(ctx: &cli::Ctx, command: Commands) -> Result<()> {
+    use cli::*;
+    match command {
         Commands::Standup {
             since,
             board,
             member,
-        } => report::standup(&ctx, since, board, member).await,
-        Commands::Summary { board } => report::summary(&ctx, board).await,
+        } => report::standup(ctx, since, board, member).await,
+        Commands::Summary { board } => report::summary(ctx, board).await,
         Commands::Activity {
             board,
             card,
@@ -210,7 +251,7 @@ async fn run(cli: Cli) -> Result<()> {
             limit,
         } => {
             report::activity(
-                &ctx,
+                ctx,
                 trelloc_core::ops::ActivityInput {
                     board,
                     card,
@@ -226,8 +267,8 @@ async fn run(cli: Cli) -> Result<()> {
             path,
             query,
             data,
-        } => report::api(&ctx, method, path, query, data).await,
-        Commands::Mcp(c) => mcp::run(&ctx, c).await,
+        } => report::api(ctx, method, path, query, data).await,
+        _ => unreachable!("dispatch sends only report commands"),
     }
 }
 

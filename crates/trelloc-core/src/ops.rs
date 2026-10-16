@@ -45,6 +45,7 @@ pub async fn board_list(r: &Resolver<'_>, input: &BoardListInput) -> Result<Vec<
         }
         None => r.client().my_boards(filter).await?,
     };
+    boards.retain(|b| r.board_is_active(&b.id));
     if input.starred {
         boards.retain(|b| b.starred);
     }
@@ -371,7 +372,7 @@ pub async fn search_cards(r: &Resolver<'_>, input: &SearchInput) -> Result<Searc
     } else {
         Filter::Open
     };
-    let (cards, mode) = match f.plan() {
+    let (mut cards, mode) = match f.plan() {
         Plan::BoardScan { boards } => {
             let urls: Vec<String> = boards.iter().map(|b| board_cards_url(b, filter)).collect();
             let mut cards = Vec::new();
@@ -393,6 +394,7 @@ pub async fn search_cards(r: &Resolver<'_>, input: &SearchInput) -> Result<Searc
             )
         }
     };
+    cards.retain(|card| r.board_is_active(&card.id_board));
     let mut snapshots = BTreeMap::new();
     for board_id in cards
         .iter()
@@ -977,8 +979,12 @@ pub async fn set_field(
     field: &str,
     raw: &str,
 ) -> Result<String> {
+    r.ensure_board_active(&board.id)?;
     if is_clear(raw) {
         return clear_field(r, board, card_id, field).await;
+    }
+    if r.board_access().is_restricted() {
+        r.card(card_id).await?;
     }
     let def = r.field(board, field).await?;
     let body = field_value_body(&def, raw, r.client().timezone())?;
@@ -992,6 +998,10 @@ pub async fn clear_field(
     card_id: &str,
     field: &str,
 ) -> Result<String> {
+    r.ensure_board_active(&board.id)?;
+    if r.board_access().is_restricted() {
+        r.card(card_id).await?;
+    }
     let def = r.field(board, field).await?;
     r.client()
         .set_card_field(card_id, &def.id, field_clear_body(&def))
@@ -1095,8 +1105,13 @@ pub async fn add_checklist(
     if name.trim().is_empty() {
         return Err(TrelloError::Invalid("checklist name is empty".into()));
     }
+    let card_id = if r.board_access().is_restricted() {
+        r.card(card_id).await?
+    } else {
+        card_id.to_string()
+    };
     let c = r.client();
-    let mut cl = c.create_checklist(card_id, name.trim()).await?;
+    let mut cl = c.create_checklist(&card_id, name.trim()).await?;
     for i in items.iter().filter(|i| !i.trim().is_empty()) {
         cl.check_items
             .push(c.add_check_item(&cl.id, i.trim(), None, None).await?);
@@ -1828,11 +1843,27 @@ pub async fn standup(
     member: Option<&str>,
 ) -> Result<Standup> {
     let tz = r.client().timezone().map(str::to_string);
-    let tz = tz.as_deref();
-    let since_dt = parse_when(since, tz)?;
+    let since_dt = parse_when(since, tz.as_deref())?;
     let since_iso = crate::time::to_trello_iso(since_dt);
+    let (board_id, member_id, member_name) = resolve_standup_scope(r, board, member).await?;
+    let actions = standup_actions(r, board_id.as_ref(), &member_id, &since_iso).await?;
+    let mut out =
+        summarize_standup_actions(member_name, to_local_iso(since_dt, tz.as_deref()), &actions);
+    let (in_progress, due_soon, overdue) =
+        standup_card_summaries(r, board_id.as_ref(), member, &member_id, tz.as_deref()).await?;
+    out.in_progress = in_progress;
+    out.due_soon = due_soon;
+    out.overdue = overdue;
+    Ok(out)
+}
+
+async fn resolve_standup_scope(
+    r: &Resolver<'_>,
+    board: Option<&str>,
+    member: Option<&str>,
+) -> Result<(Option<BoardId>, String, String)> {
     let board_id = match board {
-        Some(b) => Some(r.board(b).await?),
+        Some(board) => Some(r.board(board).await?),
         None => None,
     };
     let (member_id, member_name) = match member {
@@ -1843,98 +1874,133 @@ pub async fn standup(
                 me.username.clone().unwrap_or_else(|| me.id.clone()),
             )
         }
-        Some(m) => {
-            let b = match &board_id {
-                Some(b) => b.clone(),
+        Some(member) => {
+            let board = match &board_id {
+                Some(board) => board.clone(),
                 None => r.board_or_default(None).await?,
             };
-            let m = r.member(&b, m).await?;
-            (m.id, m.username)
+            let member = r.member(&board, member).await?;
+            (member.id, member.username)
         }
     };
-    let c = r.client();
-    let actions = match &board_id {
-        Some(b) => {
-            let mut a = c
+    Ok((board_id, member_id, member_name))
+}
+
+async fn standup_actions(
+    r: &Resolver<'_>,
+    board: Option<&BoardId>,
+    member_id: &str,
+    since: &str,
+) -> Result<Vec<Action>> {
+    let client = r.client();
+    let actions = match board {
+        Some(board) => {
+            let mut actions = client
                 .board_actions(
-                    &b.id,
+                    &board.id,
                     Some("updateCard,commentCard"),
-                    Some(&since_iso),
+                    Some(since),
                     ACTION_LIMIT,
                 )
                 .await?;
-            a.retain(|x| x.id_member_creator == member_id);
-            a
+            actions.retain(|action| action.id_member_creator == member_id);
+            actions
         }
         None => {
-            c.get(
-                &format!("/members/{member_id}/actions"),
-                &Query::new()
-                    .push("filter", "updateCard,commentCard")
-                    .push("since", &since_iso)
-                    .push("limit", ACTION_LIMIT),
-            )
-            .await?
+            client
+                .get(
+                    &format!("/members/{member_id}/actions"),
+                    &Query::new()
+                        .push("filter", "updateCard,commentCard")
+                        .push("since", since)
+                        .push("limit", ACTION_LIMIT),
+                )
+                .await?
         }
     };
+    filter_active_actions(r, actions).await
+}
+
+async fn filter_active_actions(r: &Resolver<'_>, actions: Vec<Action>) -> Result<Vec<Action>> {
+    let mut active = Vec::with_capacity(actions.len());
+    for action in actions {
+        if r.action_is_active(&action).await? {
+            active.push(action);
+        }
+    }
+    Ok(active)
+}
+
+fn summarize_standup_actions(member: String, since: String, actions: &[Action]) -> Standup {
     let mut out = Standup {
-        member: member_name,
-        since: to_local_iso(since_dt, tz),
+        member,
+        since,
         ..Default::default()
     };
     let mut seen_done = BTreeSet::new();
     let mut seen_comment = BTreeSet::new();
-    for a in &actions {
-        let card = json!({ "id": a.card_id(), "name": a.card_name() });
-        let d = &a.data;
-        if a.action_type == "updateCard" && d.get("listAfter").is_some() {
+    for action in actions {
+        let card = json!({ "id": action.card_id(), "name": action.card_name() });
+        let data = &action.data;
+        if action.action_type == "updateCard" && data.get("listAfter").is_some() {
             out.moved.push(json!({
                 "card": card,
-                "from": d["listBefore"]["name"],
-                "to": d["listAfter"]["name"],
-                "date": a.date,
+                "from": data["listBefore"]["name"],
+                "to": data["listAfter"]["name"],
+                "date": action.date,
             }));
-        } else if a.action_type == "updateCard"
-            && d["card"]["dueComplete"] == json!(true)
-            && d["old"].get("dueComplete").is_some()
+        } else if action.action_type == "updateCard"
+            && data["card"]["dueComplete"] == json!(true)
+            && data["old"].get("dueComplete").is_some()
         {
-            if seen_done.insert(a.card_id().unwrap_or_default().to_string()) {
+            if seen_done.insert(action.card_id().unwrap_or_default().to_string()) {
                 out.completed.push(card);
             }
-        } else if a.action_type == "commentCard"
-            && seen_comment.insert(a.card_id().unwrap_or_default().to_string())
+        } else if action.action_type == "commentCard"
+            && seen_comment.insert(action.card_id().unwrap_or_default().to_string())
         {
             out.commented.push(card);
         }
     }
+    out
+}
+
+async fn standup_card_summaries(
+    r: &Resolver<'_>,
+    board: Option<&BoardId>,
+    member: Option<&str>,
+    member_id: &str,
+    tz: Option<&str>,
+) -> Result<(Vec<Value>, Vec<Value>, Vec<Value>)> {
     let input = SearchInput {
-        boards: board_id.iter().map(|b| b.id.clone()).collect(),
-        members: if member.is_some_and(|m| m != "me") {
-            vec![member_id.clone()]
+        boards: board.iter().map(|board| board.id.clone()).collect(),
+        members: if member.is_some_and(|member| member != "me") {
+            vec![member_id.to_string()]
         } else {
             vec![]
         },
-        mine: member.is_none_or(|m| m == "me"),
+        mine: member.is_none_or(|member| member == "me"),
         ..Default::default()
     };
-    let res = search_cards(r, &input).await?;
+    let result = search_cards(r, &input).await?;
     let now = Utc::now();
     let soon = now + chrono::Duration::days(2);
-    for card in &res.cards {
-        let s = card_summary(card, res.snapshot(&card.id_board), tz);
+    let mut in_progress = Vec::new();
+    let mut due_soon = Vec::new();
+    let mut overdue = Vec::new();
+    for card in &result.cards {
+        let summary = card_summary(card, result.snapshot(&card.id_board), tz);
         let due = card.due.as_deref().and_then(parse_iso);
         if !card.due_complete {
             match due {
-                Some(d) if d < now => out.overdue.push(s.clone()),
-                Some(d) if d < soon => out.due_soon.push(s.clone()),
+                Some(date) if date < now => overdue.push(summary.clone()),
+                Some(date) if date < soon => due_soon.push(summary.clone()),
                 _ => {}
             }
-        }
-        if !card.due_complete {
-            out.in_progress.push(s);
+            in_progress.push(summary);
         }
     }
-    Ok(out)
+    Ok((in_progress, due_soon, overdue))
 }
 
 /// Card counts for a board: per list, per member, overdue, no due date, done.
@@ -2008,7 +2074,7 @@ pub async fn activity(r: &Resolver<'_>, input: &ActivityInput) -> Result<Vec<Val
         .transpose()?;
     let limit = input.limit.unwrap_or(50).clamp(1, ACTION_LIMIT);
     let c = r.client();
-    let (mut actions, board) = if let Some(card) = &input.card {
+    let (actions, board) = if let Some(card) = &input.card {
         let id = r.card(card).await?;
         (c.card_actions(&id, None, 0).await?, None)
     } else if let Some(b) = &input.board {
@@ -2021,6 +2087,13 @@ pub async fn activity(r: &Resolver<'_>, input: &ActivityInput) -> Result<Vec<Val
     } else {
         (c.my_actions(None, since.as_deref(), limit).await?, None)
     };
+    let mut active_actions = Vec::with_capacity(actions.len());
+    for action in actions {
+        if r.action_is_active(&action).await? {
+            active_actions.push(action);
+        }
+    }
+    let mut actions = active_actions;
     if let Some(m) = &input.member {
         let id = if m.eq_ignore_ascii_case("me") {
             r.me()?.id.clone()

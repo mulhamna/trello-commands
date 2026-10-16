@@ -1,25 +1,88 @@
 //! Config file (`~/.config/trelloc/config.toml`) with named profiles and
 //! `TRELLO_*` env overrides. Priority: env > selected profile > defaults.
 
-use std::{collections::BTreeMap, path::PathBuf};
-
-use serde::{Deserialize, Serialize};
-
 use crate::error::{Result, TrelloError};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
 
-pub const DEFAULT_BASE_URL: &str = "https://api.trello.com/1";
-pub const DEFAULT_PROFILE: &str = "default";
-pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
-pub const DEFAULT_CARD_LIMIT: usize = 200;
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-pub struct ConfigFile {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub current_profile: Option<String>,
-    #[serde(default)]
-    pub profiles: BTreeMap<String, Profile>,
+/// Which boards are available to commands using a profile.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub enum BoardAccess {
+    /// Legacy profiles remain unrestricted until configured explicitly.
+    #[default]
+    Unconfigured,
+    All,
+    AllExcept(BTreeSet<String>),
+    Selected(BTreeSet<String>),
 }
 
+impl BoardAccess {
+    pub fn is_configured(&self) -> bool {
+        !matches!(self, Self::Unconfigured)
+    }
+
+    pub fn is_all(&self) -> bool {
+        matches!(self, Self::All)
+    }
+
+    pub fn is_restricted(&self) -> bool {
+        matches!(self, Self::Selected(_) | Self::AllExcept(_))
+    }
+
+    pub fn is_active(&self, board_id: &str) -> bool {
+        match self {
+            Self::Unconfigured | Self::All => true,
+            Self::AllExcept(ids) => !ids.contains(board_id),
+            Self::Selected(ids) => ids.contains(board_id),
+        }
+    }
+
+    pub fn activate(&mut self, board_id: impl Into<String>) {
+        let id = board_id.into();
+        match self {
+            Self::Unconfigured | Self::All => {}
+            Self::AllExcept(ids) => {
+                ids.remove(&id);
+            }
+            Self::Selected(ids) => {
+                ids.insert(id);
+            }
+        }
+    }
+
+    pub fn deactivate(&mut self, board_id: impl Into<String>) {
+        let id = board_id.into();
+        match self {
+            Self::Unconfigured => {
+                *self = Self::AllExcept(BTreeSet::from([id]));
+            }
+            Self::All => {
+                *self = Self::AllExcept(BTreeSet::from([id]));
+            }
+            Self::AllExcept(ids) => {
+                ids.insert(id);
+            }
+            Self::Selected(ids) => {
+                ids.remove(&id);
+            }
+        }
+    }
+
+    pub fn select<I, S>(&mut self, ids: I)
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        *self = Self::Selected(ids.into_iter().map(Into::into).collect());
+    }
+
+    pub fn set_all(&mut self) {
+        *self = Self::All;
+    }
+}
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct Profile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -50,6 +113,65 @@ pub struct Profile {
     /// Short names → board or `board/list` refs.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub aliases: BTreeMap<String, String>,
+}
+
+pub const DEFAULT_BASE_URL: &str = "https://api.trello.com/1";
+pub const DEFAULT_PROFILE: &str = "default";
+pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
+pub const DEFAULT_CARD_LIMIT: usize = 200;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct ConfigFile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_profile: Option<String>,
+    #[serde(default)]
+    pub profiles: BTreeMap<String, Profile>,
+}
+
+/// Board activation policies stored separately from the public profile structs.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct BoardAccessFile {
+    profiles: BTreeMap<String, BoardAccess>,
+}
+
+impl BoardAccessFile {
+    pub fn path() -> Result<PathBuf> {
+        Ok(ConfigFile::path()?.with_file_name("board-access.toml"))
+    }
+
+    pub fn load() -> Result<Self> {
+        let path = Self::path()?;
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+        warn_if_world_readable(&path);
+        let text = std::fs::read_to_string(&path)?;
+        toml::from_str(&text).map_err(|e| TrelloError::Config(format!("{}: {e}", path.display())))
+    }
+
+    pub fn access(&self, profile: &str) -> BoardAccess {
+        self.profiles.get(profile).cloned().unwrap_or_default()
+    }
+
+    pub fn set(&mut self, profile: impl Into<String>, access: BoardAccess) {
+        self.profiles.insert(profile.into(), access);
+    }
+
+    pub fn remove(&mut self, profile: &str) -> bool {
+        self.profiles.remove(profile).is_some()
+    }
+
+    pub fn save(&self) -> Result<PathBuf> {
+        let path = Self::path()?;
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let text = toml::to_string_pretty(self).map_err(|e| TrelloError::Config(e.to_string()))?;
+        std::fs::write(&path, text)?;
+        restrict_permissions(&path)?;
+        Ok(path)
+    }
 }
 
 fn env(key: &str) -> Option<String> {
@@ -125,7 +247,6 @@ fn restrict_permissions(path: &std::path::Path) -> Result<()> {
 fn restrict_permissions(_path: &std::path::Path) -> Result<()> {
     Ok(())
 }
-
 #[cfg(unix)]
 fn warn_if_world_readable(path: &std::path::Path) {
     use std::os::unix::fs::PermissionsExt;
@@ -293,6 +414,40 @@ pub fn mask_secret(secret: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn board_access_transitions_and_legacy_default() {
+        let mut access = BoardAccess::Unconfigured;
+        assert!(!access.is_configured());
+        assert!(access.is_active("b1"));
+        access.deactivate("b1");
+        assert!(access.is_restricted());
+        assert!(!access.is_active("b1"));
+        assert!(access.is_active("b2"));
+        access.activate("b1");
+        assert!(access.is_active("b1"));
+        access.select(["b2".to_string()]);
+        assert!(!access.is_active("b1"));
+        assert!(access.is_active("b2"));
+        access.activate("b1");
+        assert!(access.is_active("b1"));
+        access.deactivate("b2");
+        assert!(!access.is_active("b2"));
+        access.set_all();
+        access.deactivate("b1");
+        assert!(matches!(&access, BoardAccess::AllExcept(_)));
+        assert!(!access.is_active("b1"));
+        assert!(access.is_active("b2"));
+        access.activate("b1");
+        assert!(access.is_active("b1"));
+        access.set_all();
+        assert!(access.is_all());
+        assert!(access.is_active("b1"));
+        assert_eq!(
+            BoardAccessFile::default().access("legacy"),
+            BoardAccess::Unconfigured
+        );
+    }
     use serial_test::serial;
 
     const VARS: &[&str] = &[
@@ -333,13 +488,28 @@ mod tests {
         p.username = Some("alice".into());
         p.aliases.insert("roadmap".into(), "AbCd1234".into());
         let _path = file.save().unwrap();
+        let mut board_access = BoardAccessFile::default();
+        board_access.set(
+            "work",
+            BoardAccess::Selected(["AbCd1234".to_string()].into_iter().collect()),
+        );
+        let _access_path = board_access.save().unwrap();
+        assert_eq!(
+            BoardAccessFile::load().unwrap().access("work"),
+            BoardAccess::Selected(["AbCd1234".to_string()].into_iter().collect())
+        );
         assert_eq!(ConfigFile::load().unwrap(), file);
 
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let mode = std::fs::metadata(_path).unwrap().permissions().mode();
+            let access_mode = std::fs::metadata(_access_path)
+                .unwrap()
+                .permissions()
+                .mode();
             assert_eq!(mode & 0o777, 0o600);
+            assert_eq!(access_mode & 0o777, 0o600);
         }
     }
 

@@ -121,6 +121,16 @@ impl TrelloMcpServer {
     }
 
     // ── hierarchy ───────────────────────────────────────────────────────
+    #[tool(
+        name = "trello_board_access",
+        description = "List all board names and activation states, or change the active-board policy for a profile. Actions: list, all, activate, deactivate."
+    )]
+    pub async fn trello_board_access(
+        &self,
+        Parameters(args): Parameters<BoardAccessArgs>,
+    ) -> Result<Json<ToolResponse>, ErrorData> {
+        respond(app::board_access(args).await)
+    }
 
     #[tool(
         name = "trello_workspace_list",

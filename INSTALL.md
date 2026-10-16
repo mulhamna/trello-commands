@@ -123,17 +123,55 @@ gh attestation verify trelloc-macos-aarch64.tar.gz --repo mulhamna/trello-comman
 
 The npm package is published with npm provenance, and the crates are published from the same workflow via crates.io trusted publishing.
 
+## Configure Trello access
+
+`trelloc` requires a Trello API key and a user token. Trello does not use Jira API tokens for this flow. Each user creates an app and generates its own key.
+
+### Create an app and API key
+
+1. Sign in to Trello and open [Trello apps administration](https://trello.com/apps/admin).
+2. Select **New** in the top-right corner of **Your Apps**.
+
+   ![Trello app administration page with the New button](docs/static/install1.jpeg)
+
+3. Select **My app doesn't use Power-up capabilities**. This setting cannot change after app creation; `trelloc` does not need to add features to the Trello interface.
+
+   ![New Trello app form with Power-Up capabilities disabled](docs/static/install2.png)
+
+4. Enter an app name, select a Workspace, and enter your contact email, support contact, and author.
+5. Select **Create**. Open the new app, select **Trello Auth**, then generate an API key.
+
+### Log in with trelloc
+
+Run the login command and enter the API key when prompted:
+
+```bash
+trelloc auth login
+```
+
+`trelloc` opens Trello's authorization page. Select **Allow**, copy the user token shown by Trello, then paste it into the terminal prompt. The prompt masks pasted input; press Enter to submit it.
+
+The current authorization flow requests `read`, `write`, and `account` access, with no token expiration. Keep the user token private. Revoke it from Trello account settings under **Applications**.
+
+The CLI verifies both credentials and saves them in the selected profile. See [Trello's authorization guide](https://developer.atlassian.com/cloud/trello/guides/rest-api/authorization/) for details.
+
+If the terminal prompt does not work, pass the API key and read the token from stdin:
+
+```bash
+printf '%s' "$TRELLO_TOKEN" | trelloc auth login --api-key "$TRELLO_API_KEY" --token -
+```
+
 ## After installing
 
 ```bash
 trelloc --version
-trelloc auth login        # API key (trello.com/power-ups/admin) + token from the authorize page
+trelloc auth login        # enter your app API key, then authorize a user token
 trelloc tree
 ```
 
 `auth login` asks for an API key, opens Trello's authorize page for a token, checks both once, and caches your member id in the profile (so later commands never spend the `/members/me` budget). Use `--profile <name>` to keep several accounts.
 
-| | Config (`config.toml`, permissions `600`) | Cache (boards, board snapshots) |
+| | Config files (`config.toml`, `board-access.toml`; permissions `600`) | Cache (boards, board snapshots) |
 | --- | --- | --- |
 | Linux | `~/.config/trelloc/` | `~/.cache/trelloc/` |
 | macOS | `~/Library/Application Support/trelloc/` | `~/Library/Caches/trelloc/` |
@@ -148,6 +186,8 @@ trelloc mcp install            # checklist, then pick clients (and profiles) wit
 trelloc mcp install --client claude-code --client cursor
 trelloc mcp doctor             # binary on PATH, credentials, client config
 ```
+
+Interactive setup asks whether each selected profile should expose all boards or only a selected subset. The policy lives in `board-access.toml` next to `config.toml` and applies to both CLI and MCP. Manage it later with `trelloc board access list`, `activate`, `deactivate`, or `all`.
 
 Supported targets: `claude-code`, `claude-code-cli`, `claude-desktop`, `cursor`, `gemini-cli`, `codex`, `vscode`, `copilot-cli`, `opencode`, `windsurf`, `zed`, `openclaw`, `hermes`, `antigravity-cli`, `antigravity-desktop`, `arsy-code`, and `generic-json` (prints a snippet to paste anywhere).
 

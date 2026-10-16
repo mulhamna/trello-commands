@@ -9,7 +9,7 @@ use std::{
 
 use serde_json::{json, Value};
 use trelloc_core::{
-    config::{mask_secret, ConfigFile, TrelloConfig},
+    config::{mask_secret, BoardAccess, BoardAccessFile, ConfigFile, TrelloConfig},
     ops::{self, BoardListInput},
     rate_limit::RateLimiter,
     Resolver, TrelloClient,
@@ -36,6 +36,7 @@ fn limiter_for(token: &str) -> Arc<RateLimiter> {
 pub struct Ctx {
     pub cfg: TrelloConfig,
     pub client: TrelloClient,
+    board_access: BoardAccess,
     workspace: Option<String>,
 }
 
@@ -44,15 +45,19 @@ impl Ctx {
         let cfg = load_config(acc.profile.as_deref())?;
         let (_, token) = cfg.credentials()?;
         let client = TrelloClient::new(&cfg)?.with_limiter(limiter_for(token));
+        let board_access = BoardAccessFile::load()?.access(&cfg.profile);
         Ok(Self {
             cfg,
             client,
+            board_access,
             workspace: acc.workspace.clone().filter(|w| !w.trim().is_empty()),
         })
     }
 
     pub fn resolver(&self) -> Resolver<'_> {
-        Resolver::new(&self.client, &self.cfg).with_workspace(self.workspace.clone())
+        Resolver::new(&self.client, &self.cfg)
+            .with_workspace(self.workspace.clone())
+            .with_board_access(self.board_access.clone())
     }
 
     pub fn tz(&self) -> Option<&str> {
@@ -141,6 +146,101 @@ pub fn profile_list() -> AppResult<Value> {
     }))
 }
 
+pub async fn board_access(a: BoardAccessArgs) -> AppResult<Value> {
+    let config = ConfigFile::load()?;
+    let profile_name = a
+        .account
+        .profile
+        .clone()
+        .unwrap_or_else(|| config.selected_profile_name());
+    if a.account.profile.is_some() && !config.profiles.contains_key(&profile_name) {
+        return Err(AppError::config_error(format!(
+            "unknown profile '{profile_name}'"
+        )));
+    }
+    let mut access_file = BoardAccessFile::load()?;
+    let mut access = access_file.access(&profile_name);
+
+    let mut boards = None;
+    let action = a.action.trim().to_ascii_lowercase();
+    match action.as_str() {
+        "list" => {
+            let mut cfg = TrelloConfig::from_file(&config, Some(&profile_name))?;
+            cfg.workspace = a
+                .account
+                .workspace
+                .clone()
+                .filter(|workspace| !workspace.trim().is_empty())
+                .or(cfg.workspace);
+            let (_, token) = cfg.credentials()?;
+            let client = TrelloClient::new(&cfg)?.with_limiter(limiter_for(token));
+            let resolver = Resolver::new(&client, &cfg).with_board_access(BoardAccess::All);
+            let directory = resolver.directory(false).await?;
+            let workspace_id = match a.account.workspace.as_deref() {
+                Some(workspace) if !workspace.trim().is_empty() => {
+                    Some(resolver.workspace(workspace).await?.id)
+                }
+                _ => None,
+            };
+            boards = Some(json!(directory
+                .boards
+                .iter()
+                .filter(|board| {
+                    workspace_id
+                        .as_deref()
+                        .is_none_or(|id| board.workspace_id.as_deref() == Some(id))
+                })
+                .map(|board| json!({
+                    "id": board.id,
+                    "name": board.name,
+                    "active": access.is_active(&board.id),
+                }))
+                .collect::<Vec<_>>()));
+        }
+        "all" => access.set_all(),
+        "activate" | "deactivate" => {
+            let board_input = a
+                .board
+                .as_deref()
+                .filter(|s| !s.trim().is_empty())
+                .ok_or_else(|| AppError::validation("board is required for activate/deactivate"))?;
+            let mut cfg = TrelloConfig::from_file(&config, Some(&profile_name))?;
+            cfg.workspace = a
+                .account
+                .workspace
+                .clone()
+                .filter(|workspace| !workspace.trim().is_empty())
+                .or(cfg.workspace);
+            let (_, token) = cfg.credentials()?;
+            let client = TrelloClient::new(&cfg)?.with_limiter(limiter_for(token));
+            let resolver = Resolver::new(&client, &cfg).with_board_access(BoardAccess::All);
+            let board = resolver.board(board_input).await?;
+            if action == "activate" {
+                access.activate(board.id);
+            } else {
+                access.deactivate(board.id);
+            }
+        }
+        _ => {
+            return Err(AppError::validation(
+                "action must be list, all, activate or deactivate",
+            ))
+        }
+    }
+    if action != "list" {
+        access_file.set(profile_name.clone(), access);
+        access_file.save()?;
+    }
+    let access = access_file.access(&profile_name);
+    Ok(json!({
+        "profile": profile_name,
+        "board_access": access,
+        "configured": access.is_configured(),
+        "restricted": access.is_restricted(),
+        "boards": boards.unwrap_or(Value::Null),
+    }))
+}
+
 // ── hierarchy ───────────────────────────────────────────────────────────
 
 pub async fn workspace_list(a: Account) -> AppResult<Value> {
@@ -216,6 +316,11 @@ pub async fn api_request(a: ApiRequestArgs) -> AppResult<Value> {
         query = query.push(&k, value_to_input(&v));
     }
     let ctx = Ctx::load(&a.account)?;
+    if ctx.board_access.is_restricted() {
+        return Err(AppError::unsafe_operation(
+            "raw API requests are disabled while board access is restricted",
+        ));
+    }
     let encoded = query.encoded();
     Ok(ctx
         .client
@@ -495,6 +600,9 @@ pub async fn comment_edit(a: CommentEditArgs) -> AppResult<Value> {
 pub async fn comment_delete(a: CommentDeleteArgs) -> AppResult<Value> {
     require_confirm(a.confirm)?;
     let ctx = Ctx::load(&a.account)?;
+    ctx.resolver()
+        .ensure_action_active(a.comment_id.trim())
+        .await?;
     ctx.client.delete_comment(a.comment_id.trim()).await?;
     Ok(json!({ "deleted": true, "comment_id": a.comment_id }))
 }

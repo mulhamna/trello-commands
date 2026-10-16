@@ -27,6 +27,17 @@ pub struct Account {
     pub workspace: Option<String>,
 }
 
+/// Inspect or change which boards are active for a profile.
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+pub struct BoardAccessArgs {
+    #[serde(flatten)]
+    pub account: Account,
+    /// list, all, activate, or deactivate.
+    pub action: String,
+    /// Board id, shortLink, URL, alias or name; required for activate/deactivate.
+    pub board: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 pub struct BoardListArgs {
     #[serde(flatten)]

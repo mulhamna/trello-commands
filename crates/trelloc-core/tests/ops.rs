@@ -5,6 +5,7 @@ mod common;
 use common::*;
 use serde_json::{json, Value};
 use trelloc_core::{
+    config::BoardAccess,
     ops::{self, CardInput, ChecklistInput, ItemUpdate, SearchInput, UpdateInput},
     Resolver, TrelloClient, TrelloError,
 };
@@ -631,4 +632,83 @@ async fn comments_checklists_labels_attachments() {
         .await
         .is_err());
     assert_no_credentials_in_urls(&f.server).await;
+}
+
+#[tokio::test]
+async fn restricted_scope_rejects_board_and_card_and_filters_search_results() {
+    let f = Fixture::new().await;
+    let c = f.client();
+    let r = Resolver::new(&c, &f.cfg).with_board_access(BoardAccess::Selected(
+        [B1.to_string()].into_iter().collect(),
+    ));
+    assert!(matches!(r.board(B2).await, Err(TrelloError::Invalid(_))));
+
+    let card_id = "6a0000000000000000000002";
+    Mock::given(method("GET"))
+        .and(path(format!("/cards/{card_id}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(card_json(card_id, B2, "l1", 2)))
+        .expect(1)
+        .mount(&f.server)
+        .await;
+    assert!(matches!(
+        r.card(card_id).await,
+        Err(TrelloError::Invalid(_))
+    ));
+
+    Mock::given(method("GET"))
+        .and(path("/members/me/cards"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            card_json("6a0000000000000000000001", B1, "l1", 1),
+            card_json(card_id, B2, "l1", 2)
+        ])))
+        .expect(1)
+        .mount(&f.server)
+        .await;
+    let result = ops::search_cards(
+        &r,
+        &SearchInput {
+            mine: true,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.cards.len(), 1);
+    assert_eq!(result.cards[0].id_board, B1);
+}
+
+#[tokio::test]
+async fn restricted_scope_checks_action_card_before_id_only_mutation() {
+    let f = Fixture::new().await;
+    let c = f.client();
+    let r = Resolver::new(&c, &f.cfg).with_board_access(BoardAccess::Selected(
+        [B1.to_string()].into_iter().collect(),
+    ));
+    let card_id = "6a0000000000000000000002";
+    Mock::given(method("GET"))
+        .and(path("/actions/action1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "action1",
+            "type": "commentCard",
+            "data": { "card": { "id": card_id } }
+        })))
+        .mount(&f.server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(format!("/cards/{card_id}")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(card_json(card_id, B2, "l1", 2)))
+        .expect(2)
+        .mount(&f.server)
+        .await;
+    assert!(matches!(
+        r.ensure_action_active("action1").await,
+        Err(TrelloError::Invalid(_))
+    ));
+
+    let action = trelloc_core::model::Action {
+        id: "action1".into(),
+        data: json!({ "card": { "id": card_id } }),
+        ..Default::default()
+    };
+    assert!(!r.action_is_active(&action).await.unwrap());
 }

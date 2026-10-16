@@ -172,6 +172,7 @@ pub async fn comment(ctx: &Ctx, cmd: CommentCmd) -> Result<()> {
             println!("Updated comment {comment_id}.");
         }
         CommentCmd::Delete { comment_id } => {
+            r.ensure_action_active(comment_id.trim()).await?;
             if !confirm(ctx.yes, &format!("Delete comment {comment_id}?"))? {
                 return Ok(());
             }
