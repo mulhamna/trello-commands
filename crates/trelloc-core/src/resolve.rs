@@ -17,10 +17,10 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use crate::{
     board_ref::{is_id, BoardRef},
     card_ref::CardRef,
-    client::{Filter, TrelloClient},
-    config::{CachedMember, TrelloConfig},
+    client::{Filter, Query, TrelloClient},
+    config::{BoardAccess, CachedMember, TrelloConfig},
     error::{Result, TrelloError},
-    model::{Board, BoardSnapshot, CustomField, Label, Member, TrelloList, Workspace},
+    model::{Action, Board, BoardSnapshot, CustomField, Label, Member, TrelloList, Workspace},
 };
 
 pub const CACHE_TTL_SECS: i64 = 3600;
@@ -147,6 +147,7 @@ pub struct Resolver<'a> {
     default_board: Option<String>,
     default_list: Option<String>,
     member: Option<CachedMember>,
+    board_access: BoardAccess,
     refresh: bool,
     /// Loaded data and whether this resolver fetched it from the network
     /// (a miss on fresh data doesn't trigger another refetch).
@@ -198,6 +199,7 @@ impl<'a> Resolver<'a> {
             default_board: cfg.default_board.clone(),
             default_list: cfg.default_list.clone(),
             member: cfg.member.clone(),
+            board_access: BoardAccess::Unconfigured,
             refresh: false,
             directory: Mutex::new(None),
             snapshots: Mutex::new(BTreeMap::new()),
@@ -217,7 +219,67 @@ impl<'a> Resolver<'a> {
         }
         self
     }
+    pub fn board_access(&self) -> &BoardAccess {
+        &self.board_access
+    }
 
+    pub fn board_is_active(&self, board_id: &str) -> bool {
+        self.board_access.is_active(board_id)
+    }
+
+    /// Use a deliberate policy for management operations that must resolve
+    /// boards independently from the current active scope.
+    pub fn with_board_access(mut self, access: BoardAccess) -> Self {
+        self.board_access = access;
+        self
+    }
+
+    pub fn ensure_board_active(&self, board_id: &str) -> Result<()> {
+        if self.board_is_active(board_id) {
+            Ok(())
+        } else {
+            Err(TrelloError::Invalid(format!(
+                "board '{board_id}' is inactive for profile access policy"
+            )))
+        }
+    }
+
+    /// Verify an action's card belongs to an active board (for id-only APIs).
+    pub async fn ensure_action_active(&self, action_id: &str) -> Result<()> {
+        if !self.board_access.is_restricted() {
+            return Ok(());
+        }
+        let action: Action = self
+            .client
+            .get(&format!("/actions/{action_id}"), &Query::new())
+            .await?;
+        let card_id = action
+            .card_id()
+            .ok_or_else(|| TrelloError::Invalid(format!("action '{action_id}' has no card")))?;
+        let card = self.client.card(card_id, false).await?;
+        self.ensure_board_active(&card.id_board)
+    }
+
+    pub async fn action_is_active(&self, action: &Action) -> Result<bool> {
+        if !self.board_access.is_restricted() {
+            return Ok(true);
+        }
+        if let Some(board_id) = action
+            .data
+            .get("board")
+            .and_then(|b| b.get("id"))
+            .and_then(serde_json::Value::as_str)
+        {
+            return Ok(self.board_is_active(board_id));
+        }
+        match action.card_id() {
+            Some(id) => {
+                let card = self.client.card(id, false).await?;
+                Ok(self.board_is_active(&card.id_board))
+            }
+            None => Ok(false),
+        }
+    }
     pub fn client(&self) -> &TrelloClient {
         self.client
     }
@@ -274,7 +336,9 @@ impl<'a> Resolver<'a> {
     }
 
     pub async fn directory(&self, refresh: bool) -> Result<Directory> {
-        Ok(self.directory_with_origin(refresh).await?.0)
+        let mut directory = self.directory_with_origin(refresh).await?.0;
+        directory.boards.retain(|b| self.board_is_active(&b.id));
+        Ok(directory)
     }
 
     /// Run `find` on the directory; on a miss with cached data, refetch once.
@@ -353,7 +417,7 @@ impl<'a> Resolver<'a> {
         };
         match BoardRef::parse(target) {
             BoardRef::Id(id) => {
-                // Ids never trigger a directory fetch; the cache only adds a name.
+                self.ensure_board_active(&id)?;
                 let name = cached_name(&id).map_or_else(|| id.clone(), |b| b.name);
                 return Ok(BoardId { id, name });
             }
@@ -362,6 +426,7 @@ impl<'a> Resolver<'a> {
                     .with_directory(|d| Ok(d.boards.iter().find(|b| b.short_link == link).cloned()))
                     .await?;
                 if let Some(b) = hit {
+                    self.ensure_board_active(&b.id)?;
                     return Ok(BoardId {
                         id: b.id,
                         name: b.name,
@@ -369,12 +434,12 @@ impl<'a> Resolver<'a> {
                 }
                 match self.client.board(&link).await {
                     Ok(b) => {
+                        self.ensure_board_active(&b.id)?;
                         return Ok(BoardId {
                             id: b.id,
                             name: b.name,
-                        })
+                        });
                     }
-                    // An 8-char word may be a board name after all.
                     Err(TrelloError::NotFound(_)) | Err(TrelloError::Api { status: 400, .. }) => {}
                     Err(e) => return Err(e),
                 }
@@ -395,7 +460,9 @@ impl<'a> Resolver<'a> {
                     name,
                     &d.boards,
                     |b| d.qualified(b),
-                    |b| in_scope(b) && b.name.to_lowercase() == lower,
+                    |b| {
+                        self.board_is_active(&b.id) && in_scope(b) && b.name.to_lowercase() == lower
+                    },
                 )
             })
             .await?;
@@ -408,7 +475,7 @@ impl<'a> Resolver<'a> {
         let names: Vec<String> = dir
             .boards
             .iter()
-            .filter(|b| in_scope(b))
+            .filter(|b| self.board_is_active(&b.id) && in_scope(b))
             .map(|b| b.name.clone())
             .collect();
         Err(not_found("board", name, &names))
@@ -431,6 +498,7 @@ impl<'a> Resolver<'a> {
         board_id: &str,
         refresh: bool,
     ) -> Result<(BoardSnapshot, bool)> {
+        self.ensure_board_active(board_id)?;
         let refresh = refresh || self.refresh;
         let file = format!("snapshots/{board_id}.json");
         if !refresh {
@@ -678,8 +746,8 @@ impl<'a> Resolver<'a> {
     /// id | shortLink | card URL | `board#42` | `#42` (default board) → an id
     /// usable in `/cards/{id}`. Only `#n` forms cost a request.
     pub async fn card(&self, input: &str) -> Result<String> {
-        match CardRef::parse(input)? {
-            CardRef::Id(s) | CardRef::ShortLink(s) => Ok(s),
+        let id = match CardRef::parse(input)? {
+            CardRef::Id(s) | CardRef::ShortLink(s) => s,
             CardRef::BoardNumber { board, number } => {
                 let b = self.board_or_default(board.as_deref()).await?;
                 self.client
@@ -690,8 +758,13 @@ impl<'a> Resolver<'a> {
                     .map(|(id, _)| id)
                     .ok_or_else(|| {
                         TrelloError::NotFound(format!("card #{number} on board '{}'", b.name))
-                    })
+                    })?
             }
+        };
+        if self.board_access.is_restricted() {
+            let card = self.client.card(&id, false).await?;
+            self.ensure_board_active(&card.id_board)?;
         }
+        Ok(id)
     }
 }

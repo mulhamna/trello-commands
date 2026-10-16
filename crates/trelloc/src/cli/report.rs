@@ -2,7 +2,10 @@
 
 use anyhow::{Context, Result};
 use serde_json::Value;
-use trelloc_core::ops::{self, ActivityInput};
+use trelloc_core::{
+    config::BoardAccessFile,
+    ops::{self, ActivityInput},
+};
 
 use super::{file_or_stdin, Ctx};
 use crate::output::{confirm, print_json, print_table};
@@ -131,6 +134,13 @@ pub async fn api(
     query: Option<String>,
     data: Option<String>,
 ) -> Result<()> {
+    let cfg = ctx.config()?;
+    if BoardAccessFile::load()?
+        .access(&cfg.profile)
+        .is_restricted()
+    {
+        anyhow::bail!("raw API requests are disabled while board access is restricted");
+    }
     let method = method.to_ascii_uppercase();
     let body = match data {
         Some(d) => {

@@ -9,6 +9,7 @@ use rmcp::{
 use serde_json::{json, Map, Value};
 use serial_test::serial;
 use tempfile::TempDir;
+use trelloc_core::config::BoardAccessFile;
 use trelloc_mcp::TrelloMcpServer;
 use wiremock::{
     matchers::{method, path, query_param},
@@ -128,6 +129,7 @@ async fn lists_tools_with_trello_prefix() {
         "trello_workspace_list",
         "trello_board_list",
         "trello_board_get",
+        "trello_board_access",
         "trello_member_list",
         "trello_api_request",
     ] {
@@ -234,6 +236,126 @@ async fn api_request_requires_confirm_for_writes() {
     assert_eq!(v[0]["name"], "x");
 }
 
+#[tokio::test]
+#[serial]
+async fn restricted_profile_blocks_board_tools_and_raw_api() {
+    let server = MockServer::start().await;
+    let _env = Env::new(Some(&server.uri()));
+    let mut board_access = BoardAccessFile::load().unwrap();
+    let mut access = board_access.access("default");
+    access.deactivate(BOARD.to_string());
+    board_access.set("default", access);
+    board_access.save().unwrap();
+
+    let (client, _server) = connect().await;
+    let board_error = call(&client, "trello_board_get", json!({ "board": BOARD }))
+        .await
+        .unwrap_err();
+    assert!(board_error.contains("inactive"), "{board_error}");
+    let raw_error = call(
+        &client,
+        "trello_api_request",
+        json!({ "method": "GET", "path": "/members/me/boards" }),
+    )
+    .await
+    .unwrap_err();
+    assert!(raw_error.contains("unsafe_operation"), "{raw_error}");
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+#[serial]
+async fn comment_delete_rejects_cards_on_inactive_boards() {
+    let server = MockServer::start().await;
+    let _env = Env::new(Some(&server.uri()));
+    let mut board_access = BoardAccessFile::load().unwrap();
+    let mut access = board_access.access("default");
+    access.deactivate(BOARD.to_string());
+    board_access.set("default", access);
+    board_access.save().unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/actions/action1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "action1",
+            "type": "commentCard",
+            "data": { "card": { "id": "card1" } }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/cards/card1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "card1", "idBoard": BOARD
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/actions/action1"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(0)
+        .mount(&server)
+        .await;
+
+    let (client, _server) = connect().await;
+    let err = call(
+        &client,
+        "trello_comment_delete",
+        json!({ "comment_id": "action1", "confirm": true }),
+    )
+    .await
+    .unwrap_err();
+    assert!(err.contains("inactive"), "{err}");
+    assert!(server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .all(|request| request.method.as_str() != "DELETE"));
+}
+
+#[tokio::test]
+#[serial]
+async fn board_access_tool_persists_per_profile() {
+    let server = MockServer::start().await;
+    let _env = Env::new(Some(&server.uri()));
+    let (client, _server) = connect().await;
+    Mock::given(method("GET"))
+        .and(path("/members/me/organizations"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/members/me/boards"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            { "id": BOARD, "name": "Roadmap", "shortLink": "AbCd0001" }
+        ])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let result = call(&client, "trello_board_access", json!({ "action": "all" }))
+        .await
+        .unwrap();
+    assert_eq!(result["configured"], true);
+    assert_eq!(result["restricted"], false);
+    let changed = call(
+        &client,
+        "trello_board_access",
+        json!({ "action": "deactivate", "board": BOARD }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(changed["restricted"], true);
+    let board_access = BoardAccessFile::load().unwrap();
+    assert!(!board_access.access("default").is_active(BOARD));
+
+    let listed = call(&client, "trello_board_access", json!({ "action": "list" }))
+        .await
+        .unwrap();
+    assert_eq!(listed["boards"][0]["name"], "Roadmap");
+    assert_eq!(listed["boards"][0]["active"], false);
+}
 fn card(id: &str) -> Value {
     json!({
         "id": id, "idShort": 4, "name": "Fix login", "idBoard": BOARD, "idList": "l2",

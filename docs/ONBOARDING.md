@@ -10,9 +10,10 @@ git add . && git commit -m "docs: add design docs and agent guide" && git push -
 ```
 
 For manual testing later, get your own credentials (don't paste them into Claude):
-1. <https://trello.com/power-ups/admin> → New → any workspace → **API key** tab → Generate.
-2. Open `https://trello.com/1/authorize?expiration=never&scope=read,write,account&response_type=token&name=trelloc&key=YOUR_KEY` → Allow → copy the token.
-3. `export TRELLO_API_KEY=… TRELLO_TOKEN=…` in your shell when testing.
+1. Open <https://trello.com/apps/admin> → **New** → select **My app doesn't use Power-up capabilities** → choose a Workspace → create the app.
+2. Open the app's **Trello Auth** tab and generate its API key.
+3. Run `trelloc auth login`, authorize in the browser, and paste the user token into the terminal prompt.
+4. For automated testing, set `TRELLO_API_KEY` and `TRELLO_TOKEN` locally. See [the credential guide](../INSTALL.md#configure-trello-access).
 
 Make a scratch board (e.g. "trelloc-sandbox") with a few lists, labels, and the Custom Fields Power-Up enabled.
 

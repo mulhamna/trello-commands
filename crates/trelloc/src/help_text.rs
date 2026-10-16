@@ -52,7 +52,7 @@ pub const AUTH_LONG_ABOUT: &str = concat!(
 pub const AUTH_LOGIN_LONG_ABOUT: &str = concat!(
     banner!(),
     "Store a Trello API key and user token.\n\n",
-    "1. API key: https://trello.com/power-ups/admin → New → API key → Generate.\n",
+    "1. API key: https://trello.com/apps/admin → New → app without Power-Up capabilities → Trello Auth → Generate.\n",
     "2. Token: trelloc opens the authorize page for your key; click Allow and paste the token.\n",
     "3. trelloc checks the token once and caches your member id in the profile.\n\n",
     "Saved to the trelloc config file (chmod 600 on Unix).\n",

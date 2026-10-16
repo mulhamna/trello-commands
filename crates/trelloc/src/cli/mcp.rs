@@ -3,13 +3,14 @@
 //! carries the API key or token.
 
 use std::{
+    collections::BTreeMap,
     env,
     path::{Path, PathBuf},
 };
 
 use anyhow::{bail, Context, Result};
 use clap::{Subcommand, ValueEnum};
-use trelloc_core::config::{mask_secret, ConfigFile, TrelloConfig};
+use trelloc_core::config::{mask_secret, BoardAccessFile, ConfigFile, TrelloConfig};
 
 use super::Ctx;
 use kurir::{doctor as kurir_doctor, register, Harness, RegistrationOptions, Scope, ServerSpec};
@@ -205,6 +206,7 @@ pub async fn run(ctx: &Ctx, cmd: McpCmd) -> Result<()> {
             };
             if clients.is_empty() {
                 let plan = interactive_setup(ctx, &command).await?;
+                ensure_board_access(&plan.profiles, !print && !dry_run).await?;
                 install_all(
                     &plan.clients,
                     &plan.profiles,
@@ -215,6 +217,8 @@ pub async fn run(ctx: &Ctx, cmd: McpCmd) -> Result<()> {
                     force,
                 )
             } else {
+                let configure = crate::output::is_tty() && !print && !dry_run;
+                ensure_board_access(&server_profiles, configure).await?;
                 install_all(
                     &clients,
                     &server_profiles,
@@ -228,6 +232,62 @@ pub async fn run(ctx: &Ctx, cmd: McpCmd) -> Result<()> {
         }
         McpCmd::Doctor { client, command } => doctor(client, &command).await,
     }
+}
+
+async fn ensure_board_access(profiles: &[String], interactive: bool) -> Result<()> {
+    if !interactive {
+        return Ok(());
+    }
+    crate::output::require_tty("board access choice", "--client <target>")?;
+    let file = ConfigFile::load()?;
+    let mut access_file = BoardAccessFile::load()?;
+    let targets = if profiles.is_empty() {
+        vec![file.selected_profile_name()]
+    } else {
+        profiles.to_vec()
+    };
+    let mut changed = false;
+    for profile in targets {
+        let access = access_file.access(&profile);
+        if access.is_configured() {
+            continue;
+        }
+        let all = inquire::Confirm::new(&format!(
+            "Should all Trello boards be active for profile '{profile}'?"
+        ))
+        .with_default(true)
+        .prompt()
+        .context("board access choice cancelled")?;
+        let access = if all {
+            trelloc_core::config::BoardAccess::All
+        } else {
+            let cfg = TrelloConfig::from_file(&file, Some(&profile))?;
+            let client = TrelloClient::new(&cfg)?;
+            let resolver = trelloc_core::Resolver::new(&client, &cfg)
+                .with_board_access(trelloc_core::config::BoardAccess::All);
+            let boards = resolver.directory(false).await?.boards;
+            let board_ids: BTreeMap<String, String> = boards
+                .iter()
+                .map(|board| (format!("{} ({})", board.name, board.id), board.id.clone()))
+                .collect();
+            let labels: Vec<String> = board_ids.keys().cloned().collect();
+            let selected =
+                inquire::MultiSelect::new("Which boards should be active?", labels.clone())
+                    .prompt()
+                    .context("board selection cancelled")?;
+            let ids = selected
+                .iter()
+                .filter_map(|label| board_ids.get(label).cloned())
+                .collect();
+            trelloc_core::config::BoardAccess::Selected(ids)
+        };
+        access_file.set(profile, access);
+        changed = true;
+    }
+    if changed {
+        access_file.save()?;
+    }
+    Ok(())
 }
 
 /// What the interactive flow decided to install.

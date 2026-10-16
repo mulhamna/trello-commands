@@ -15,6 +15,8 @@ Async Rust client for the Trello REST API — the library behind the
 - **Human input** — `parse_when("fri")`, `"+3d"`, `"eow"`, `"none"`; custom-field values from option names, numbers, dates and booleans.
 - **High-level operations** — search with filters, create, update, move (warns about labels/fields a cross-board move drops), copy, archive, bulk, batch, standup and board summaries.
 
+The CLI stores credentials in a profile; the core reads that profile or `TRELLO_API_KEY` / `TRELLO_TOKEN`. Rust callers pass policies with `Resolver::with_board_access`; the CLI and MCP store them in `board-access.toml`. See the [credential and board-access guide](https://github.com/mulhamna/trello-commands/blob/main/INSTALL.md#configure-trello-access).
+
 ```toml
 [dependencies]
 trelloc-core = "1"

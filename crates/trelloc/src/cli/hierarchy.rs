@@ -6,10 +6,10 @@ use trelloc_core::{
     client::Filter,
     config::ConfigFile,
     ops::{self, BoardListInput, BoardUpdate, ListUpdate},
-    resolve::suggest,
+    resolve::{suggest, Resolver},
 };
 
-use super::Ctx;
+use super::{board_access::BoardAccessCmd, Ctx};
 use crate::output::{confirm, print_json, print_table};
 
 #[derive(Debug, Subcommand)]
@@ -43,6 +43,9 @@ pub enum BoardCmd {
     Unarchive { board: String },
     /// Delete a board permanently, with all lists and cards
     Delete { board: String },
+    /// Manage board activation
+    #[command(subcommand)]
+    Access(BoardAccessCmd),
 }
 
 #[derive(Debug, Subcommand)]
@@ -127,99 +130,18 @@ pub enum MemberCmd {
 }
 
 pub async fn board(ctx: &Ctx, cmd: BoardCmd) -> Result<()> {
+    let cmd = match cmd {
+        BoardCmd::Access(access) => return super::board_access::run(ctx, access).await,
+        other => other,
+    };
     let s = ctx.session()?;
     let r = s.resolver();
     match cmd {
+        BoardCmd::Access(_) => unreachable!("handled before creating the session"),
         BoardCmd::List { closed, starred } => {
-            let boards = ops::board_list(
-                &r,
-                &BoardListInput {
-                    workspace: ctx.workspace.clone(),
-                    include_closed: closed,
-                    starred,
-                },
-            )
-            .await?;
-            if ctx.json {
-                return print_json(&boards.iter().map(ops::board_summary).collect::<Vec<_>>());
-            }
-            let dir = r.directory(false).await?;
-            print_table(
-                &["Short link", "Name", "Workspace", ""],
-                boards.iter().map(|b| {
-                    vec![
-                        b.short_link.clone(),
-                        b.name.clone(),
-                        dir.workspace_name(b.workspace_id.as_deref()),
-                        [b.starred.then_some("★"), b.closed.then_some("archived")]
-                            .into_iter()
-                            .flatten()
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                    ]
-                }),
-            );
+            board_list(ctx, &r, closed, starred).await?;
         }
-        BoardCmd::View { board } => {
-            let b = r.board_or_default(board.as_deref()).await?;
-            let v = ops::board_overview(&r, &b.id).await?;
-            if ctx.json {
-                return print_json(&v);
-            }
-            println!(
-                "{}  ({})",
-                v["name"].as_str().unwrap_or_default(),
-                v["url"].as_str().unwrap_or_default()
-            );
-            println!();
-            print_table(
-                &["List", "Cards"],
-                v["lists"].as_array().into_iter().flatten().map(|l| {
-                    vec![
-                        l["name"].as_str().unwrap_or_default().to_string(),
-                        l["cards"].to_string(),
-                    ]
-                }),
-            );
-            let join = |key: &str, f: &dyn Fn(&serde_json::Value) -> String| {
-                v[key]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .map(f)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            };
-            println!(
-                "Labels:  {}",
-                join(
-                    "labels",
-                    &|l| match (l["name"].as_str(), l["color"].as_str()) {
-                        (Some(n), Some(c)) if !n.is_empty() => format!("{n} ({c})"),
-                        (Some(n), None) if !n.is_empty() => n.to_string(),
-                        (_, Some(c)) => c.to_string(),
-                        _ => String::new(),
-                    }
-                )
-            );
-            println!(
-                "Members: {}",
-                join("members", &|m| format!(
-                    "@{}",
-                    m["username"].as_str().unwrap_or_default()
-                ))
-            );
-            let fields = join("custom_fields", &|f| {
-                format!(
-                    "{} ({})",
-                    f["name"].as_str().unwrap_or_default(),
-                    f["type"].as_str().unwrap_or_default()
-                )
-            });
-            if !fields.is_empty() {
-                println!("Fields:  {fields}");
-            }
-        }
+        BoardCmd::View { board } => board_view(ctx, &r, board).await?,
         BoardCmd::Use { board } => {
             let b = r.board(&board).await?;
             let mut file = ConfigFile::load()?;
@@ -298,6 +220,103 @@ pub async fn board(ctx: &Ctx, cmd: BoardCmd) -> Result<()> {
             let b = ops::board_delete(&r, &board).await?;
             println!("Deleted board '{}'.", b.name);
         }
+    }
+    Ok(())
+}
+
+async fn board_list(ctx: &Ctx, r: &Resolver<'_>, closed: bool, starred: bool) -> Result<()> {
+    let boards = ops::board_list(
+        r,
+        &BoardListInput {
+            workspace: ctx.workspace.clone(),
+            include_closed: closed,
+            starred,
+        },
+    )
+    .await?;
+    if ctx.json {
+        return print_json(&boards.iter().map(ops::board_summary).collect::<Vec<_>>());
+    }
+    let directory = r.directory(false).await?;
+    print_table(
+        &["Short link", "Name", "Workspace", ""],
+        boards.iter().map(|board| {
+            vec![
+                board.short_link.clone(),
+                board.name.clone(),
+                directory.workspace_name(board.workspace_id.as_deref()),
+                [
+                    board.starred.then_some("★"),
+                    board.closed.then_some("archived"),
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(" "),
+            ]
+        }),
+    );
+    Ok(())
+}
+
+async fn board_view(ctx: &Ctx, r: &Resolver<'_>, board: Option<String>) -> Result<()> {
+    let b = r.board_or_default(board.as_deref()).await?;
+    let v = ops::board_overview(r, &b.id).await?;
+    if ctx.json {
+        return print_json(&v);
+    }
+    println!(
+        "{}  ({})",
+        v["name"].as_str().unwrap_or_default(),
+        v["url"].as_str().unwrap_or_default()
+    );
+    println!();
+    print_table(
+        &["List", "Cards"],
+        v["lists"].as_array().into_iter().flatten().map(|l| {
+            vec![
+                l["name"].as_str().unwrap_or_default().to_string(),
+                l["cards"].to_string(),
+            ]
+        }),
+    );
+    let join = |key: &str, f: &dyn Fn(&serde_json::Value) -> String| {
+        v[key]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(f)
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    println!(
+        "Labels:  {}",
+        join(
+            "labels",
+            &|l| match (l["name"].as_str(), l["color"].as_str()) {
+                (Some(n), Some(c)) if !n.is_empty() => format!("{n} ({c})"),
+                (Some(n), None) if !n.is_empty() => n.to_string(),
+                (_, Some(c)) => c.to_string(),
+                _ => String::new(),
+            }
+        )
+    );
+    println!(
+        "Members: {}",
+        join("members", &|m| format!(
+            "@{}",
+            m["username"].as_str().unwrap_or_default()
+        ))
+    );
+    let fields = join("custom_fields", &|f| {
+        format!(
+            "{} ({})",
+            f["name"].as_str().unwrap_or_default(),
+            f["type"].as_str().unwrap_or_default()
+        )
+    });
+    if !fields.is_empty() {
+        println!("Fields:  {fields}");
     }
     Ok(())
 }

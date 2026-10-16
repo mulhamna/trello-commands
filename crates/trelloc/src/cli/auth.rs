@@ -4,7 +4,7 @@ use anyhow::{bail, Context, Result};
 use clap::Subcommand;
 use serde_json::json;
 use trelloc_core::{
-    config::{mask_secret, ConfigFile, Profile, TrelloConfig},
+    config::{mask_secret, BoardAccessFile, ConfigFile, Profile, TrelloConfig},
     model::Member,
     TrelloClient,
 };
@@ -17,7 +17,7 @@ pub enum AuthCmd {
     /// Store an API key and token, then cache who you are
     #[command(long_about = crate::help_text::AUTH_LOGIN_LONG_ABOUT)]
     Login {
-        /// API key (trello.com/power-ups/admin → API key). Prompted when
+        /// API key from trello.com/apps/admin → app → Trello Auth. Prompted when
         /// omitted (falls back to TRELLO_API_KEY without a terminal).
         #[arg(long)]
         api_key: Option<String>,
@@ -132,7 +132,7 @@ pub async fn login(
 
     if api_key.is_none() && is_tty() {
         eprintln!(
-            "Get an API key at https://trello.com/power-ups/admin → New → API key → Generate."
+            "Get an API key at https://trello.com/apps/admin → New → create an app without Power-Up capabilities → Trello Auth → Generate."
         );
     }
     let key = secret_arg(
@@ -323,6 +323,10 @@ fn profile(ctx: &Ctx, cmd: ProfileCmd) -> Result<()> {
         ProfileCmd::Remove { name } => {
             if file.profiles.remove(&name).is_none() {
                 bail!("no profile named '{name}'");
+            }
+            let mut board_access = BoardAccessFile::load()?;
+            if board_access.remove(&name) {
+                board_access.save()?;
             }
             if file.current_profile.as_deref() == Some(name.as_str()) {
                 file.current_profile = None;

@@ -14,7 +14,7 @@ Conventions:
 
 ```
 trelloc auth login [--api-key K] [--token T] [--profile work]
-    # 1. no key? print how to get one (trello.com/power-ups/admin → API key) and prompt
+    # 1. no key? point to trello.com/apps/admin → create an app without Power-Up capabilities → Trello Auth → Generate API key
     # 2. no token? open the authorize URL (expiration=never, scope=read,write,account, name=trelloc) and prompt for the token
     # 3. GET /1/members/me once → cache member_id/username in the profile
     # 4. optionally pick a default workspace and board
@@ -38,6 +38,18 @@ trelloc alias set <name> <board|board/list> | list | remove <name>
 trelloc member list [--board <b> | --workspace <w>]
 trelloc cache clear
 ```
+
+### Board access
+
+```bash
+trelloc board access list
+trelloc board access all
+trelloc board access activate <board>
+trelloc board access deactivate <board>
+trelloc board access select              # interactive board picker
+```
+
+Board access is stored per profile and applies to CLI and MCP. Legacy profiles allow all boards until setup; restricted profiles reject inactive board references and disable raw API commands.
 
 Board/list management (P4):
 ```

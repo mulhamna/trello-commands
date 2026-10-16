@@ -11,7 +11,7 @@ Legend: items without a marker were checked against the official guides and the 
 | Item | Value |
 | --- | --- |
 | Base URL | `https://api.trello.com/1` |
-| Credentials | API key (per Power-Up) + user token |
+| Credentials | API key (per Trello app; Power-Up features are not required) + user token |
 | Auth header | `Authorization: OAuth oauth_consumer_key="{key}", oauth_token="{token}"` |
 | Other accepted forms | `?key=…&token=…` query params, or `key`/`token` in a PUT/POST body — **don't use them** |
 | Params | The spec documents write params as **query parameters**. trelloc sends them as a JSON body instead so long text never lands in a URL — Trello reads body params (it documents `key`/`token` in bodies) **(unverified per endpoint)** |
@@ -22,7 +22,7 @@ The first 8 hex characters of any id are its creation time in unix seconds — u
 
 ## 2. Auth flow
 
-1. **API key.** Created per Power-Up: <https://trello.com/power-ups/admin> → New (any workspace) → *API key* tab → Generate. Users of trelloc create their own (we never ship a shared key).
+1. **API key.** Each user creates an app at <https://trello.com/apps/admin> → **New** → select **My app doesn't use Power-up capabilities** → choose a Workspace → **Trello Auth** → generate an API key. The app does not need Power-Up capabilities.
 2. **Token.** Open
    `https://trello.com/1/authorize?expiration=never&scope=read,write,account&response_type=token&key={key}&name=trelloc`
    in the browser → Allow → the token is displayed. User pastes it back.
