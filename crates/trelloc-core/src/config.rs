@@ -493,7 +493,7 @@ mod tests {
             "work",
             BoardAccess::Selected(["AbCd1234".to_string()].into_iter().collect()),
         );
-        let access_path = board_access.save().unwrap();
+        let _access_path = board_access.save().unwrap();
         assert_eq!(
             BoardAccessFile::load().unwrap().access("work"),
             BoardAccess::Selected(["AbCd1234".to_string()].into_iter().collect())
@@ -504,7 +504,10 @@ mod tests {
         {
             use std::os::unix::fs::PermissionsExt;
             let mode = std::fs::metadata(_path).unwrap().permissions().mode();
-            let access_mode = std::fs::metadata(access_path).unwrap().permissions().mode();
+            let access_mode = std::fs::metadata(_access_path)
+                .unwrap()
+                .permissions()
+                .mode();
             assert_eq!(mode & 0o777, 0o600);
             assert_eq!(access_mode & 0o777, 0o600);
         }
