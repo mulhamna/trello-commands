@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.0](https://github.com/mulhamna/trello-commands/compare/v1.0.1...v1.1.0) (2026-10-16)
+
+
+### Features
+
+* **cli:** add per-profile board access scopes ([2eecc15](https://github.com/mulhamna/trello-commands/commit/2eecc15c091fbbaf398b17f307a3a74f4985d0ec))
+* **cli:** add per-profile board access scopes ([0c1c708](https://github.com/mulhamna/trello-commands/commit/0c1c70864a83122b293c8b44244d82e1b8c8e667))
+
+
+### Bug Fixes
+
+* **cli:** avoid logging board identifiers ([493fa69](https://github.com/mulhamna/trello-commands/commit/493fa69c2d45de61e625725fc8cd90e5a4c2e381))
+* **core:** avoid unused Windows test binding ([3b99a1a](https://github.com/mulhamna/trello-commands/commit/3b99a1a79cd985c8b9b35306bb68a969ef06000f))
+
 ## [1.0.1](https://github.com/mulhamna/trello-commands/compare/v1.0.0...v1.0.1) (2026-10-15)
 
 
