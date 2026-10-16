@@ -79,18 +79,18 @@ pub async fn run(ctx: &Ctx, cmd: BoardAccessCmd) -> Result<()> {
             println!("All boards are active for profile '{name}'.");
         }
         BoardAccessCmd::Activate { board } => {
-            let (id, title) = resolve_board(ctx, &name, &board).await?;
+            let id = resolve_board(ctx, &name, &board).await?;
             access.activate(id.clone());
             access_file.set(name.clone(), access);
             access_file.save()?;
-            println!("Activated board {title} ({id}) for profile '{name}'.");
+            println!("Activated board for profile '{name}'.");
         }
         BoardAccessCmd::Deactivate { board } => {
-            let (id, title) = resolve_board(ctx, &name, &board).await?;
+            let id = resolve_board(ctx, &name, &board).await?;
             access.deactivate(id.clone());
             access_file.set(name.clone(), access);
             access_file.save()?;
-            println!("Deactivated board {title} ({id}) for profile '{name}'.");
+            println!("Deactivated board for profile '{name}'.");
         }
         BoardAccessCmd::Select => {
             require_tty("board selection", "board access activate <board> or all")?;
@@ -131,13 +131,12 @@ pub async fn run(ctx: &Ctx, cmd: BoardAccessCmd) -> Result<()> {
     Ok(())
 }
 
-async fn resolve_board(ctx: &Ctx, profile: &str, input: &str) -> Result<(String, String)> {
+async fn resolve_board(ctx: &Ctx, profile: &str, input: &str) -> Result<String> {
     let cfg = TrelloConfig::load_profile(Some(profile))?;
     let client = TrelloClient::new(&cfg)?;
     let resolver = Resolver::new(&client, &cfg)
         .with_refresh(ctx.refresh)
         .with_workspace(ctx.workspace.clone())
         .with_board_access(BoardAccess::All);
-    let board = resolver.board(input).await?;
-    Ok((board.id, board.name))
+    Ok(resolver.board(input).await?.id)
 }
