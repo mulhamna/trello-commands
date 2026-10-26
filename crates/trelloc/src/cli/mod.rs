@@ -6,6 +6,7 @@ pub mod collab;
 pub mod hierarchy;
 pub mod mcp;
 pub mod report;
+pub mod update;
 
 use std::io::Read;
 

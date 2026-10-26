@@ -2358,6 +2358,7 @@ dependencies = [
  "inquire",
  "kurir",
  "open",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "serial_test",
