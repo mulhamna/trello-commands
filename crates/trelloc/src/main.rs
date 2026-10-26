@@ -158,6 +158,12 @@ enum Commands {
     /// MCP server: serve, install, doctor
     #[command(subcommand, long_about = help_text::MCP_LONG_ABOUT)]
     Mcp(McpCmd),
+    /// Upgrade trelloc to the latest release through the channel that installed it
+    Update {
+        /// Only report whether a newer release exists
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 async fn run(cli: Cli) -> Result<()> {
@@ -200,6 +206,7 @@ async fn dispatch(ctx: &cli::Ctx, command: Commands) -> Result<()> {
         | Commands::Activity { .. }
         | Commands::Api { .. } => run_report(ctx, command).await,
         Commands::Mcp(cmd) => mcp::run(ctx, cmd).await,
+        Commands::Update { check } => update::run(ctx, check).await,
     }
 }
 

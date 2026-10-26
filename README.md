@@ -185,6 +185,7 @@ trelloc api PUT /cards/Ab12Cd34 --data @body.json
 | `config get \| set` | Profile settings |
 | `cache clear` | Drop cached boards and board snapshots |
 | `mcp serve \| install \| doctor` | MCP server |
+| `update [--check]` | Upgrade to the latest release |
 
 Full spec: [docs/CLI.md](docs/CLI.md).
 

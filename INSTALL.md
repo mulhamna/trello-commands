@@ -195,6 +195,8 @@ The entry is named `trelloc`, so it coexists with Trello's official server. With
 
 ## Upgrade
 
+`trelloc update` detects the channel and runs the matching command below (`--check` only reports a newer release).
+
 | Channel | Command |
 | --- | --- |
 | Install script | re-run the install command |
