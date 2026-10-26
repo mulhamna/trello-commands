@@ -138,6 +138,57 @@ async fn lists_tools_with_trello_prefix() {
     assert!(names.iter().all(|n| n.starts_with("trello_")));
 }
 
+/// Collects paths of boolean property/item schemas (`"start": true`), which
+/// strict backends like Gemini / Vertex AI reject (issue #16).
+/// `additionalProperties: true` (free-form maps) is allowed.
+fn bool_schemas(v: &Value, at: &str, out: &mut Vec<String>) {
+    let Some(obj) = v.as_object() else { return };
+    match obj.get("items") {
+        Some(Value::Bool(_)) => out.push(format!("{at}.items")),
+        Some(s) => bool_schemas(s, &format!("{at}.items"), out),
+        None => {}
+    }
+    for key in ["properties", "$defs"] {
+        for (name, s) in obj
+            .get(key)
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+        {
+            match s {
+                Value::Bool(_) => out.push(format!("{at}.{key}.{name}")),
+                s => bool_schemas(s, &format!("{at}.{key}.{name}"), out),
+            }
+        }
+    }
+    for key in ["anyOf", "oneOf", "allOf", "prefixItems"] {
+        for (i, s) in obj
+            .get(key)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .enumerate()
+        {
+            match s {
+                Value::Bool(_) => out.push(format!("{at}.{key}[{i}]")),
+                s => bool_schemas(s, &format!("{at}.{key}[{i}]"), out),
+            }
+        }
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn tool_schemas_have_no_boolean_subschemas() {
+    let _env = Env::new(None);
+    let (client, _server) = connect().await;
+    let mut bad = Vec::new();
+    for t in client.list_all_tools().await.unwrap() {
+        bool_schemas(&Value::Object((*t.input_schema).clone()), &t.name, &mut bad);
+    }
+    assert!(bad.is_empty(), "boolean subschemas: {bad:#?}");
+}
+
 #[tokio::test]
 #[serial]
 async fn auth_missing_without_credentials() {
