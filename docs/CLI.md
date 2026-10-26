@@ -201,3 +201,10 @@ trelloc mcp install [--client claude-code|claude-desktop|cursor|codex|gemini-cli
                                               # no --client: interactive picker; global --profile pins that profile
 ```
 `mcp install` writes `command: "<path to trelloc>", args: ["mcp", "serve"]` (+ `env.TRELLO_PROFILE` when a profile is pinned; several profiles become `trelloc-<profile>` entries). Never writes the key or token into client configs.
+
+## update
+
+```
+trelloc update [--check] [--yes] [--json]     # latest GitHub release; upgrade via npm / brew / scoop / cargo / install script
+```
+The channel is guessed from the binary's path. The upgrade command runs after a confirmation (`--yes` skips it); `--check` only reports. On Windows it prints the command, because a running `.exe` can't be replaced.
