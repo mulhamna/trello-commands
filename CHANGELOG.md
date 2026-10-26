@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.0](https://github.com/mulhamna/trello-commands/compare/v1.1.0...v1.2.0) (2026-10-26)
+
+
+### Features
+
+* **cli:** add trelloc update to upgrade to the latest release ([dc5a469](https://github.com/mulhamna/trello-commands/commit/dc5a4692a766b92514049e6b3ef1f858170eddfe))
+
+
+### Bug Fixes
+
+* **deps:** bump rustls-webpki and webpki-roots for RUSTSEC advisories ([18db09a](https://github.com/mulhamna/trello-commands/commit/18db09a834e749737694a2edf74cbf169dedb9ce))
+* **mcp:** emit an object schema for trello_card_update start ([cf687fd](https://github.com/mulhamna/trello-commands/commit/cf687fd40ce7dd1230d97c62d0dd801ddb5591b5)), closes [#16](https://github.com/mulhamna/trello-commands/issues/16)
+* patch CVEs, fix MCP start schema, add trelloc update ([739ade9](https://github.com/mulhamna/trello-commands/commit/739ade91cc816ab49966580218aaba5f79c181ca))
+
 ## [1.1.0](https://github.com/mulhamna/trello-commands/compare/v1.0.1...v1.1.0) (2026-10-16)
 
 
