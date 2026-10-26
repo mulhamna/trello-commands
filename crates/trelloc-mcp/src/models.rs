@@ -196,6 +196,8 @@ pub struct CardUpdateArgs {
     pub desc: Option<String>,
     /// Human date, ISO, or null/"none" to clear.
     pub due: Option<Value>,
+    // Without a doc comment schemars emits `"start": true`, which Gemini rejects.
+    /// Human date, ISO, or null/"none" to clear.
     pub start: Option<Value>,
     pub due_complete: Option<bool>,
     pub members_add: Option<Vec<String>>,
