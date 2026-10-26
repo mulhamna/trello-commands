@@ -124,3 +124,38 @@ fn is_newer(latest: &str, current: &str) -> bool {
     let parse = |v: &str| -> Vec<u64> { v.split('.').map(|n| n.parse().unwrap_or(0)).collect() };
     parse(latest) > parse(current)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compares_versions_numerically() {
+        assert!(is_newer("1.1.1", "1.1.0"));
+        assert!(is_newer("1.10.0", "1.9.9"));
+        assert!(is_newer("2.0.0", "1.99.99"));
+        assert!(!is_newer("1.1.0", "1.1.0"));
+        assert!(!is_newer("1.0.9", "1.1.0"));
+    }
+
+    #[test]
+    fn picks_the_installing_channel() {
+        let first = |p: &str| upgrade_command(Path::new(p))[0].clone();
+        assert_eq!(
+            first("/usr/local/lib/node_modules/@mulham28/trelloc/lib/bin/trelloc"),
+            "npm"
+        );
+        assert_eq!(
+            first("/opt/homebrew/Cellar/trelloc/1.1.0/bin/trelloc"),
+            "brew"
+        );
+        assert_eq!(
+            first("C:\\Users\\me\\scoop\\apps\\trelloc\\current\\trelloc.exe"),
+            "scoop"
+        );
+        assert_eq!(first("/home/me/.cargo/bin/trelloc"), "cargo");
+        if !cfg!(windows) {
+            assert_eq!(first("/home/me/.local/bin/trelloc"), "sh");
+        }
+    }
+}
