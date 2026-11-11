@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.3.0](https://github.com/mulhamna/trello-commands/compare/v1.2.0...v1.3.0) (2026-11-11)
+
+
+### Features
+
+* **cli:** add jcode and zcode targets to mcp install ([51b3ec8](https://github.com/mulhamna/trello-commands/commit/51b3ec8eff652665484b5bae251d87b33d4e82ed))
+
+
+### Bug Fixes
+
+* clear rmcp advisories and apply dependency updates ([93a9447](https://github.com/mulhamna/trello-commands/commit/93a94473096add724a3577ea45691bcd17e9028e))
+
+
+### Code Refactoring
+
+* **mcp:** use ServerConfig for rmcp 3.9 ([6029c80](https://github.com/mulhamna/trello-commands/commit/6029c8076d00ef420daef2bf7e69581d1c0937dd))
+
 ## [1.2.0](https://github.com/mulhamna/trello-commands/compare/v1.1.0...v1.2.0) (2026-10-26)
 
 
