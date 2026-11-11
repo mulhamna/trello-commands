@@ -18,7 +18,7 @@ axum = "0.8"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 chrono-tz = "0.10"
 clap = { version = "4", features = ["derive", "env"] }
-comfy-table = "7"
+comfy-table = "8"
 dirs = "7"
 futures = "0.3"
 indicatif = "0.18"
