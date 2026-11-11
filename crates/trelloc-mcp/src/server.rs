@@ -1,6 +1,6 @@
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{Implementation, ServerCapabilities, ServerInfo},
+    model::{Implementation, ServerCapabilities, ServerConfig},
     tool, tool_handler, tool_router,
     transport::{
         stdio,
@@ -74,8 +74,8 @@ fn respond(result: AppResult<Value>) -> Result<Json<ToolResponse>, ErrorData> {
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for TrelloMcpServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_server_info(
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build()).with_server_info(
             Implementation::new("trelloc", env!("CARGO_PKG_VERSION"))
                 .with_title("trelloc MCP")
                 .with_description("Unofficial Trello tools for MCP clients"),
