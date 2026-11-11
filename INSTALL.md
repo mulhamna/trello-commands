@@ -189,7 +189,7 @@ trelloc mcp doctor             # binary on PATH, credentials, client config
 
 Interactive setup asks whether each selected profile should expose all boards or only a selected subset. The policy lives in `board-access.toml` next to `config.toml` and applies to both CLI and MCP. Manage it later with `trelloc board access list`, `activate`, `deactivate`, or `all`.
 
-Supported targets: `claude-code`, `claude-code-cli`, `claude-desktop`, `cursor`, `gemini-cli`, `codex`, `vscode`, `copilot-cli`, `opencode`, `windsurf`, `zed`, `openclaw`, `hermes`, `antigravity-cli`, `antigravity-desktop`, `arsy-code`, and `generic-json` (prints a snippet to paste anywhere).
+Supported targets: `claude-code`, `claude-code-cli`, `claude-desktop`, `cursor`, `gemini-cli`, `codex`, `vscode`, `copilot-cli`, `opencode`, `windsurf`, `zed`, `openclaw`, `hermes`, `antigravity-cli`, `antigravity-desktop`, `arsy-code`, `jcode`, `zcode`, and `generic-json` (prints a snippet to paste anywhere).
 
 The entry is named `trelloc`, so it coexists with Trello's official server. With several profiles selected, each becomes its own entry (`trelloc-<profile>`). The API key and token are never written into client configs — the server reads them from the trelloc config.
 

@@ -33,13 +33,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v3
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v3
         with:
           languages: ${{ matrix.language }}
           build-mode: none
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v3
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v3
 
   # ── 1. CVE scan (rustsec advisory database) ───────────────────────────────
   # Uses plain shell commands instead of rustsec/audit-check action to avoid
@@ -53,10 +53,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # stable
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # stable
         with:
           toolchain: stable
-      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+      - uses: Swatinem/rust-cache@c8037a86dde8214a8310e9f54a8fc61ab362aa31 # v2
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
       - name: Run cargo audit
@@ -111,6 +111,6 @@ jobs:
           path: scorecard-results.sarif
           retention-days: 5
 
-      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v3
+      - uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v3
         with:
           sarif_file: scorecard-results.sarif
