@@ -489,7 +489,10 @@ async fn mcp_install_claude_code_writes_no_credentials() {
     assert_eq!(entry["args"], json!(["mcp", "serve"]));
     assert_eq!(entry["env"]["TRELLO_PROFILE"], "default");
     for secret in ["clikey", "clitoken", "TRELLO_TOKEN", "TRELLO_API_KEY"] {
-        assert!(!written.contains(secret), "{secret} leaked into {written}");
+        assert!(
+            !written.contains(secret),
+            "{secret} leaked into .claude.json"
+        );
     }
 }
 
